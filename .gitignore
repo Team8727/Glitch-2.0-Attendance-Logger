@@ -1,0 +1,8 @@
+# Generated poster artifacts (regenerate with tools/generate_qr_poster.py)
+/poster/qr-code.png
+/poster/attendance-poster.png
+
+# Python
+__pycache__/
+*.pyc
+.venv/
