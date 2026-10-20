@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Glitch Robotics — Attendance Sign-in</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
+</head>
+<body>
+  <main class="card">
+    <header>
+      <h1>GLITCH <span>ROBOTICS</span></h1>
+      <p class="tagline">ATTENDANCE SIGN-IN</p>
+    </header>
+
+    <form id="signin-form" novalidate>
+      <label for="member">Your name</label>
+      <select id="member" name="member" required disabled>
+        <option value="">Loading your name…</option>
+      </select>
+
+      <label for="code">Today's code</label>
+      <input
+        id="code"
+        name="code"
+        type="text"
+        inputmode="text"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="GL-____"
+        required
+      />
+
+      <button id="submit" type="submit" disabled>Sign in</button>
+    </form>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <footer>Sign in once per practice · ask a mentor if you need help</footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,163 @@
+:root {
+  --bg: #101322;
+  --panel: #1b2140;
+  --accent: #7ce38b;
+  --text: #ffffff;
+  --muted: #9aa3c7;
+  --border: #2c3354;
+  --danger: #ff7b7b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: radial-gradient(1200px 800px at 50% -10%, var(--panel), var(--bg) 70%);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 28px 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+header {
+  text-align: center;
+  border-bottom: 3px solid var(--accent);
+  padding-bottom: 14px;
+  margin-bottom: 22px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: 2px;
+}
+
+h1 span {
+  color: var(--accent);
+}
+
+.tagline {
+  margin: 6px 0 0;
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--muted);
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+label {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+select,
+input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  padding: 13px 12px;
+  font-size: 16px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+select:focus,
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+select:disabled {
+  color: var(--muted);
+}
+
+select option {
+  color: var(--text);
+  background: var(--panel);
+}
+
+input::placeholder {
+  color: var(--muted);
+}
+
+button {
+  margin-top: 16px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: var(--bg);
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status {
+  min-height: 22px;
+  margin: 14px 0 0;
+  font-size: 14px;
+  text-align: center;
+}
+
+.status.ok {
+  color: var(--accent);
+}
+
+.status.err {
+  color: var(--danger);
+}
+
+.status.busy {
+  color: var(--muted);
+}
+
+footer {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.shake {
+  animation: shake 0.35s;
+}
+
+@keyframes shake {
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
