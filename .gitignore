@@ -6,3 +6,8 @@
 __pycache__/
 *.pyc
 .venv/
+
+# Discord bot
+/bot/.env
+/bot/data/
+/bot/node_modules/

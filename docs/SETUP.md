@@ -14,6 +14,11 @@ QR at the shop → https://team8727.github.io/Glitch-2.0-Attendance-Logger/
 Requires one Google account (the owner), one spreadsheet, one Apps Script project, and
 this repo pushed to GitHub. No servers, no hosting costs, no custom domain.
 
+> **Discord bot (optional):** you can also let students sign in from the team Discord.
+> Follow `bot/README.md` (including the Replit hosting steps). The bot uses the same
+> backend URL and writes to the same `Sign-ins` tab — the QR path and the bot run side
+> by side, and the backend's per-day dedupe prevents duplicate rows.
+
 ---
 
 ## Step 1 — Owner account
