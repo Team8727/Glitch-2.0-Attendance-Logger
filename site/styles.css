@@ -101,8 +101,8 @@ body {
 
 .kiosk-frame {
   position: relative;
-  width: min(1000px, 100%);
-  padding: clamp(16px, 3vh, 36px) clamp(18px, 4vw, 48px);
+  width: min(1280px, 94vw);
+  padding: clamp(16px, 3vh, 36px) clamp(20px, 4vw, 56px);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: linear-gradient(180deg, rgba(4, 249, 4, 0.045), transparent 45%), var(--surface);
@@ -226,7 +226,7 @@ body {
   margin: clamp(10px, 2vh, 20px) 0 0;
   font-family: var(--font-glitch);
   font-weight: 400;
-  font-size: min(clamp(1.9rem, 5.6vw, 4.6rem), 9vh);
+  font-size: min(clamp(1.8rem, 4.4vw, 3.5rem), 7.5vh);
   line-height: 1.06;
   letter-spacing: 0.01em;
   color: var(--text);
@@ -290,7 +290,7 @@ body {
   margin: clamp(2px, 0.6vh, 8px) 0 0;
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: min(clamp(96px, 20vw, 280px), 30vh);
+  font-size: min(clamp(88px, 17vw, 250px), 24vh);
   line-height: 0.98;
   letter-spacing: 0.04em;
   color: var(--neon);
@@ -456,7 +456,7 @@ body {
 /* ---------- attendance board ---------- */
 
 .board {
-  width: min(1180px, 92vw);
+  width: min(1280px, 94vw);
   margin: 0 auto;
   padding: clamp(2.5rem, 6vh, 4rem) 0 0;
 }
