@@ -1,191 +1,216 @@
 # Setup runbook — Glitch 2.0 Attendance Logger
 
-Implements `.kilo/plans/1792526906891-attendance-grant-tracking.md`, evolved to a
-GitHub Pages sign-in app. Flow:
+Implements `.kilo/plans/1793111143564-bot-api-rotating-team-code.md`. Two components:
 
 ```
-QR at the shop → https://team8727.github.io/Glitch-2.0-Attendance-Logger/
-     → dropdown: pick your name → enter today's passcode → Submit
-     → Apps Script backend (free) validates passcode server-side
-     → appends Timestamp + Name + Code to the 'Sign-ins' tab
-     → 'Presence Matrix' & 'Season Summary' tabs update automatically
+QR poster at the shop → https://team8727.github.io/Glitch-2.0-Attendance-Logger/
+        → display shows a rotating 4-digit code (a real FRC team number, 60s window)
+          and that team's name + City, ST from The Blue Alliance
+        → students type the number into /signin in the team Discord
+        → the bot validates the 60-second window and appends a row to data/signins.json
+        → the display's "Today" and "Season" panels update on the next poll (20s)
 ```
 
-Requires one Google account (the owner), one spreadsheet, one Apps Script project, and
-this repo pushed to GitHub. No servers, no hosting costs, no custom domain.
-
-> **Discord bot (optional):** you can also let students sign in from the team Discord.
-> Follow `bot/README.md` (including the Replit hosting steps). The bot uses the same
-> backend URL and writes to the same `Sign-ins` tab — the QR path and the bot run side
-> by side, and the backend's per-day dedupe prevents duplicate rows.
+The bot process (on Replit) is the backend **and** the code generator; the site is a
+static GitHub Pages display. There is no Google Sheet, no Apps Script, and no sign-in
+form on the site.
 
 ---
 
-## Step 1 — Owner account
+## Step 1 — Get a The Blue Alliance API key
 
-Everything below is created from one account that stays with the team (not a
-graduating student's). Record that account in the team Discord so ownership never
-becomes a mystery.
+1. Create an account at https://www.thebluealliance.com.
+2. Go to https://www.thebluealliance.com/account → **Authentication Keys** → create
+   one (or view the read key shown there).
+3. Copy the key — it goes into the bot's `TBA_AUTH_KEY` secret (Step 4).
 
-## Step 2 — Create the spreadsheet
+The bot calls `GET https://www.thebluealliance.com/api/v3/team/frc{n}` once per window
+(and caches results for 30 days), which is far below TBA's rate limits.
 
-1. sheets.google.com → **Blank spreadsheet** → rename to `Glitch Attendance 2026-27`.
-2. **File → Settings → Timezone** → your region (set once).
-3. Create these tabs (rename `Sheet1`):
+## Step 2 — Create the Discord application
 
-   | Tab | Purpose | Who edits |
-   |---|---|---|
-   | `Roster` | Member list — the single source of truth | Mentor/admin |
-   | `Config` | Practice passcode (rotates) | Mentor/admin |
-   | `Sign-ins` | Raw rows appended by the backend (Timestamp, Name, Code) | Backend (auto) |
-   | `Presence Matrix` | Present/Absent per member per practice day | Formulas (auto) |
-   | `Season Summary` | Totals for grant reports | Formulas (auto) |
+1. Go to https://discord.com/developers/applications and sign in.
+2. **New Application** → name it (e.g. `Glitch Attendance`) → **Create**.
+3. **General Information**: copy the **Application ID** — this is `CLIENT_ID`.
+4. **Bot** → **Add Bot** → **Reset Token** → copy the token — this is `DISCORD_TOKEN`.
+   Keep it secret.
+5. **OAuth2 → URL Generator**: scopes `bot` + `applications.commands`; bot permissions
+   `Send Messages`, `Embed Links`, `View Channels`, `Read Message History`. Open the
+   generated URL and authorize the bot into your team server.
+6. Optional: enable Developer Mode (User Settings → Advanced), right-click your server
+   → **Copy Server ID** — this is `GUILD_ID` (makes commands appear instantly).
 
-## Step 3 — Fill in the Roster
+No privileged Gateway intents are needed — slash commands only.
 
-Columns (matches `templates/roster.csv`; header row 1, data row 2+):
+## Step 3 — Fill in the roster CSV
 
-`Name | Student ID | Subteam | Role | Email`
+Edit `data/roster.csv` at the repo root (created from `templates/roster.csv`). Header:
 
-Rules that keep everything working:
-- **Names unique**, no apostrophes (`O'Brien` → `OBrien`).
-- New members are added here first — the site dropdown follows automatically.
-- Import the template: **File → Import → Upload → Replace current sheet.**
-
-## Step 4 — Create the Config tab
-
-Tab `Config`, header row 1: `Key | Value`. Rows from row 2:
-
-| Key | Value | Meaning |
-|---|---|---|
-| `passcode` | `GL-1103` | Today's code (validate code students enter) |
-| `passcode_date` | `2026-11-03` | Code expires at midnight; mismatch = rejected |
-| `require_passcode` | `TRUE` | Set `FALSE` only to open sign-in during non-practice hours |
-
-**Before every practice**, the admin updates `passcode` (and `passcode_date`) — one
-cell, takes ten seconds. Scheme: `GL-` + practice date, e.g. `GL-1103`. Post the code
-in Discord/on the whiteboard at the shop.
-
-## Step 5 — Deploy the backend (once, ~10 min)
-
-Follow `backend/README.md` end to end:
-
-1. script.google.com → New project → paste `backend/Code.gs` (+ manifest).
-2. Set `SHEET_ID` to the spreadsheet ID (from its URL).
-3. **Deploy → Web app** → Execute as **Me**, access **Anyone** → copy the `/exec` URL.
-
-Result: `https://script.google.com/macros/s/XXXX/exec`, which the sign-in page calls.
-
-## Step 6 — Point the site's config at the backend
-
-Edit `site/config.js` in this repo:
-
-```js
-appsScriptUrl: "https://script.google.com/macros/s/XXXX/exec",
+```
+Name,Student ID,Subteam,Role,Email
 ```
 
-Leave it empty to run the UI in **demo mode** (sample roster, code `GL-0000`, no
-spreadsheet writes) — handy for testing the page before the backend exists.
+Rules that keep everything working:
 
-## Step 7 — Deploy to GitHub Pages
+- **Names unique**, no apostrophes (`O'Brien` → `OBrien`).
+- Only **Name** and **Subteam** are used by the bot; the rest is documentation.
+- The bot re-reads the file on **every `/link`** — new members work immediately, and
+  the file is version-controlled so it survives Replit resets.
 
-The repo already contains `.github/workflows/pages.yml`, which publishes the `site/`
-folder whenever you push.
+Set `ROSTER_CSV` (Step 4) only if you keep the roster somewhere else.
 
-1. Push the branch to GitHub:
+## Step 4 — Host the bot on Replit
+
+1. https://replit.com → **Create** → **Import from GitHub** → paste this repo's URL.
+   Replit reads `.replit` (`cd bot && npm install && npm start`), so the Run button
+   starts the bot **and** the display API in one process.
+2. Open **Tools → Secrets** and add:
+
+   | Secret | Value |
+   |---|---|
+   | `DISCORD_TOKEN` | Step 2 |
+   | `CLIENT_ID` | Step 2 |
+   | `GUILD_ID` | Step 2 (recommended) |
+   | `TBA_AUTH_KEY` | Step 1 |
+   | `TZ` | `America/Chicago` (or your region) — controls practice-day boundaries |
+   | `SIGNIN_LOG_CHANNEL_ID` | optional — channel for public "X signed in" messages |
+   | `ROSTER_CSV` | optional — alternate roster path |
+
+   `PORT` is set by Replit automatically; locally it defaults to 3000.
+3. Press **Run**. Expected log:
+
    ```
-   git push -u origin attendance-signin-v1
+   [startup] Roster loaded — N members.
+   [server] display API listening on port 3000
+   [codes] window 12345678: team 8727
+   [startup] Registered 3 commands (guild 123…).
+   [bot] Logged in as Glitch Attendance#0000.
    ```
-2. In the GitHub **repo → Settings → Pages**: under "Build and deployment",
-   set **Source: GitHub Actions** (one-time, browser click).
-3. The next push (or **Actions → Deploy to GitHub Pages → Run workflow**) publishes
-   the site.
+4. Note the Replit **web URL** (the Webview URL shown above the preview, e.g.
+   `https://glitch-attendance.yourname.repl.co`) — that is the API root for Step 5.
+5. Keep it online: a Discord bot's persistent connection normally keeps a free Repl
+   awake. Use Replit **Deploy** (autoscale/reserved VM) for an always-on setup.
 
-If the "GitHub Actions" source isn't available (older plans), use the classic path
-instead: Settings → Pages → Source **Deploy from a branch** → branch `main` /
-`/ (root)`. That serves the repo root, so first move `site/*` to the repo root and
-add a `.nojekyll`. The Actions path above is simpler and safer (only `site/` is
-published, never `.kilo/` or other repo files).
+## Step 5 — Point the site at the bot
 
-## Step 8 — QR code and poster
+Edit `site/config.js`:
 
-1. Final URL: `https://team8727.github.io/Glitch-2.0-Attendance-Logger/`
-   (prod URL is shown at the bottom of the Actions run's page and on Settings → Pages).
-2. Generate the poster with the tool:
+```js
+window.GLITCH_CONFIG = {
+  botApiUrl: "https://glitch-attendance.yourname.repl.co",
+  ...
+};
+```
+
+No trailing path — just the root; the site calls `${botApiUrl}/api/state`. Leave
+`botApiUrl` empty to run the display in **demo mode** (sample data, no network).
+
+The API sends `Access-Control-Allow-Origin: *`, so the Pages site can fetch it
+cross-origin with plain `fetch`.
+
+## Step 6 — Deploy to GitHub Pages
+
+`.github/workflows/pages.yml` already publishes the `site/` folder on every push.
+
+1. Push the repo to GitHub.
+2. **Settings → Pages** → Build and deployment → **Source: GitHub Actions** (one-time).
+3. The site appears at `https://<org>.github.io/<repo>/`. Check **Settings → Pages**
+   for the exact URL.
+
+## Step 7 — QR code and poster
+
+1. Generate the poster from the final Pages URL:
    ```
    pip install -r tools/requirements.txt
    python3 tools/generate_qr_poster.py "https://team8727.github.io/Glitch-2.0-Attendance-Logger/"
    ```
    Outputs `poster/qr-code.png` and `poster/attendance-poster.png` (A4).
-3. Print two copies: shop entrance and sign-in table. In the "Today's code" box write
-   the value from Config (Step 4).
-4. `poster/attendance-poster.svg` is the editable source if you want to restyle.
+2. Print two copies: shop entrance and the display/sign-in table. There is **no code
+   to write on the poster** anymore — the code is live on the display.
+3. `poster/attendance-poster.svg` is the editable source if you want to restyle.
 
-## Step 9 — Validation checklist
+## Step 8 — Validation checklist
 
-- [ ] Open the Pages URL on a phone → dropdown lists every Roster name.
-- [ ] Enter a short/empty code → rejected client-side.
-- [ ] Enter a wrong code → "not today's code" from the backend (shake).
-- [ ] Enter the correct code → success message; a row lands in `Sign-ins` with today's timestamp.
-- [ ] Same member again same day → "already signed in for today" (no duplicate row).
-- [ ] `Presence Matrix` gains today's column, that member `Present`, other roster members `Absent`.
-- [ ] `Season Summary` counts are correct.
-- [ ] Wrong code after midnight (with `passcode_date` set to yesterday) → rejected.
-- [ ] Backend authorizations were done once (Step 5) and ownership is the team account.
+Local (no Discord needed):
 
-## Daily / weekly operations
+- [ ] `node --check bot/*.js site/app.js` passes.
+- [ ] `WEB_ONLY=1 node bot/index.js` starts the API and `GET /api/state` returns the
+      documented shape (with a cached team, you get a code + team info).
+- [ ] Open `site/index.html` with an empty `botApiUrl` → demo data renders.
 
-- **Per practice:** admin updates Config `passcode` + `passcode_date` (Step 4); write
-  the code on the whiteboard.
-- **Weekly:** glance at `Presence Matrix`; two missing weeks → lead checks in (this is
-  what makes the data *do* something).
-- **Emergency:** the matrix doubles as an evacuation roster; share the sheet link with
-  all mentors in Discord.
-- **Grant time:** export `Season Summary` (File → Download) or screenshot it for grant
-  applications, renewal reports, and Impact Award documentation. Raw rows stay in
-  `Sign-ins` for audit.
+On Replit with real secrets:
 
-## Season rollover (May)
+- [ ] `/link <roster name>` works; a garbage name is rejected (roster CSV respected).
+- [ ] The display shows a 4-digit number and, under it, a real team name + City, ST.
+- [ ] The number flips every 60s; the countdown bar reaches 0 exactly at the flip.
+- [ ] `/signin` with a wrong number → rejected; with the current number → success, and
+      a `{ ts, name, code }` row lands in `bot/data/signins.json`.
+- [ ] The display's "Today" panel shows the sign-in within one poll (≤20s).
+- [ ] `/signin` with the previous window's number right after a flip → accepted (grace).
+- [ ] Same member, same day again → "already signed in for today" (no duplicate row).
+- [ ] Restart the Repl mid-window → the current code is unchanged (persisted in
+      `data/code-state.json`) and `/status` still shows links.
 
-1. New spreadsheet `Glitch Attendance <year-year>`; copy `Roster` and `Config` over.
-2. Update `SHEET_ID` in `backend/Code.gs` and re-deploy the Apps Script (new URL →
-   `site/config.js`).
-3. Re-paste the matrix/summary formulas (Step below remains identical).
-4. Old files live in Drive forever; funders only ever see exports.
+Degraded mode (optional but recommended to verify):
 
-## Presence Matrix & Season Summary formulas
+- [ ] Set a bogus `TBA_AUTH_KEY` → the bot stays up, the display keeps showing the
+      cached team (or a fallback), and `/signin` still validates the displayed number.
+- [ ] Stop the Repl → the display shows the offline banner; it recovers when the Repl
+      resumes.
 
-### Presence Matrix
+---
 
-- **A1:** `Member`
-- **B1** (spills right; practice-date headers):
-  `=TRANSPOSE(SORT(UNIQUE(FILTER(ARRAYFORMULA(INT(Sign-ins!$A$2:$A)), Sign-ins!$A$2:$A<>""))))`
-  Then **B1:Z1 → Format → Number → Date**.
-- **A2** (spills down):
-  `=SORT(UNIQUE(FILTER(Roster!$A$2:$A, Roster!$A$2:$A<>"")))`
-- **B2** (drag fill across/down):
-  `=IF(SUMPRODUCT(ARRAYFORMULA(INT(Sign-ins!$A$2:$A)=B$1), ARRAYFORMULA(Sign-ins!$B$2:$B=$A2))>0,"Present","Absent")`
+## API reference (`GET /api/state`)
 
-These are also in `templates/formulas.txt` (copy-paste ready).
+```json
+{
+  "ok": true,
+  "code": { "teamNumber": 8727, "secondsRemaining": 42 },
+  "team": { "number": 8727, "name": "Glitch", "city": "Rochester", "state": "MN" },
+  "today": {
+    "date": "2026-10-27",
+    "count": 2,
+    "members": [{ "name": "Jaxon M", "at": "15:02" }]
+  },
+  "season": {
+    "practices": 12,
+    "signins": 143,
+    "members": [{ "name": "Milo P", "count": 11 }]
+  }
+}
+```
 
-### Season Summary
+- `code` is `null` while the bot hasn't picked a team yet (cold start with TBA down
+  and no cache) — the display shows `----` and sign-ins wait.
+- `team` info comes from the TBA cache; `name`/`city`/`state` can be `null`, which the
+  site renders as "Team info unavailable".
+- `today` lists the current local day's sign-ins sorted by time; `season` is computed
+  on read (distinct practice dates, per-member counts, sorted by count).
+- Response headers: `Access-Control-Allow-Origin: *`, `Cache-Control: no-store`.
 
-Headers `A1 Member | B1 Total sign-ins | C1 Practice days attended | D1 Attendance %`:
+## Operations
 
-- **A2:** `=SORT(UNIQUE(FILTER(Roster!$A$2:$A, Roster!$A$2:$A<>"")))`
-- **B2:** `=IFERROR(COUNTIF(Sign-ins!$B$2:$B, $A2),0)`
-- **C2:** `=IFERROR(COUNT(UNIQUE(FILTER(ARRAYFORMULA(INT(Sign-ins!$A$2:$A)), Sign-ins!$B$2:$B=$A2))),0)`
-- **D2:** `=IFERROR(C2/COUNTA('Presence Matrix'!$B$1:$Z$1),0)` → format as percent.
+- **Before each practice:** nothing to prepare — the code is live on the display.
+  Just make sure the Repl is running.
+- **Backups:** periodically download `bot/data/signins.json` from the Repl (it holds
+  all attendance history). The roster is safe in git; the JSON stores are not.
+- **Timezone:** set `TZ` (e.g. `America/Chicago`) so "today" and season practice
+  dates follow your local day. Changing it mid-season can re-tag historical days.
+- **Emergency roster:** the display's "Today" list works as an evacuation roll.
+- **Grant time:** screenshot the Season panel, or export `signins.json` and summarize.
+- **Season rollover (May):** archive `signins.json`, then start a fresh one (empty
+  array) so season stats reset; keep the old file in Drive for audit.
 
 ## Failure modes and mitigations
 
 | Problem | Mitigation |
 |---|---|
-| Student without a phone/data | Paper sign-in sheet beside the QR; mentor appends the row to `Sign-ins` with the practice time. |
-| Backend "Server error" | Check Apps Script **Executions**; verify `SHEET_ID`, tab names, and that deployment access is `Anyone`. |
-| Backend returns old data after editing Code.gs | Re-deploy (new creation) and update the URL in `site/config.js`. |
-| Passcode leaked | Dies at midnight via `passcode_date`. Long season root: rotate daily. |
-| Roster changes mid-season | Edit `Roster` only; dropdown + matrix follow. |
-| Pages shows stale content | Push again or run the `Deploy to GitHub Pages` workflow; check the Actions log. |
-| `.kilo/` or private files accidentally published | Not possible with the Actions path — only `site/` artifacts are uploaded. |
-| Owner leaves the team | Transfer Drive ownership of sheet + Apps Script before they go; update the team Discord record. |
+| Display shows "Offline" | The Repl is asleep/stopped — open it and press Run, or use Replit Deploy. |
+| `/signin` says the code is wrong | Codes rotate every 60s; re-read the display. The previous window's number still works for a moment after a flip. |
+| Display shows `----` / "Waiting" | The bot can't reach TBA and has no cached team yet — check `TBA_AUTH_KEY` and the Repl log. |
+| Display shows "Team info unavailable" | The team number validated but no cached name — TBA was reachable without returning details; it clears on the next rotation. |
+| Bogus `TBA_AUTH_KEY` | The bot degrades: it keeps the last known/cached team, and sign-ins keep validating that displayed number. |
+| Duplicate sign-in message | Per-member, per-local-day dedupe is intentional (guards double taps). |
+| Replit reset wiped links/sign-ins | Re-run `/link`; restore `signins.json` from your backup. |
+| Roster name rejected | Names must match `data/roster.csv` exactly (case-insensitive). Edit the CSV and retry — no restart needed. |
+| Pages shows stale content | Push again or run the **Deploy to GitHub Pages** workflow; check the Actions log. |

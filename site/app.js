@@ -2,22 +2,180 @@
   "use strict";
 
   var cfg = window.GLITCH_CONFIG || {};
-  var apiUrl = cfg.appsScriptUrl || "";
+  var apiUrl = String(cfg.botApiUrl || "").replace(/\/+$/, "");
   var demoMode = !apiUrl;
+  var POLL_MS = 20000;
+  var FETCH_TIMEOUT_MS = 15000;
+  var WINDOW_SECONDS = 60;
 
-  var form = document.getElementById("signin-form");
-  var memberSelect = document.getElementById("member");
-  var codeInput = document.getElementById("code");
-  var submitBtn = document.getElementById("submit");
+  var codeEl = document.getElementById("code");
+  var barEl = document.getElementById("countdown-bar");
+  var secondsEl = document.getElementById("countdown-seconds");
+  var teamInfoEl = document.getElementById("team-info");
+  var todayCountEl = document.getElementById("today-count");
+  var todayListEl = document.getElementById("today-list");
+  var seasonPracticesEl = document.getElementById("season-practices");
+  var seasonSigninsEl = document.getElementById("season-signins");
+  var seasonListEl = document.getElementById("season-list");
+  var offlineEl = document.getElementById("offline");
   var statusEl = document.getElementById("status");
 
-  form.addEventListener("submit", onSignIn);
+  var deadline = 0;
+  var fetching = false;
+  var everLoaded = false;
+
+  setInterval(tickCountdown, 1000);
 
   if (demoMode) {
-    setStatus("Demo mode — no spreadsheet connected.", "busy");
-    loadDemoMembers();
+    render(cfg.demoState);
+    setStatus("Demo mode — showing sample data.", "busy");
   } else {
-    loadMembers();
+    poll();
+    setInterval(poll, POLL_MS);
+  }
+
+  function poll() {
+    if (fetching) return;
+    fetching = true;
+    var controller = new AbortController();
+    var timer = setTimeout(function () {
+      controller.abort();
+    }, FETCH_TIMEOUT_MS);
+    fetch(apiUrl + "/api/state", { cache: "no-store", signal: controller.signal })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (state) {
+        clearTimeout(timer);
+        fetching = false;
+        everLoaded = true;
+        hideOffline();
+        render(state);
+        setStatus("Updated " + clockNow(), "ok");
+      })
+      .catch(function () {
+        clearTimeout(timer);
+        fetching = false;
+        showOffline();
+      });
+  }
+
+  function render(state) {
+    if (!state || state.ok !== true) {
+      showOffline();
+      return;
+    }
+
+    if (state.code) {
+      deadline = Date.now() + state.code.secondsRemaining * 1000;
+      codeEl.textContent = String(state.code.teamNumber);
+      codeEl.className = "code";
+    } else {
+      deadline = 0;
+      codeEl.textContent = "----";
+      codeEl.className = "code muted";
+      setStatus("Waiting for the bot to pick a team code…", "busy");
+    }
+
+    renderTeam(state.team, !!state.code);
+    renderToday(state.today);
+    renderSeason(state.season);
+    tickCountdown();
+  }
+
+  function renderTeam(team, hasCode) {
+    if (team && team.name) {
+      var place = team.city
+        ? team.state
+          ? team.city + ", " + team.state
+          : team.city
+        : "";
+      teamInfoEl.textContent = place ? team.name + " — " + place : team.name;
+      teamInfoEl.className = "team-info";
+      return;
+    }
+    teamInfoEl.textContent = hasCode ? "Team info unavailable" : "";
+    teamInfoEl.className = "team-info muted";
+  }
+
+  function renderToday(today) {
+    var members = (today && today.members) || [];
+    todayCountEl.textContent = String(members.length);
+    todayListEl.innerHTML = "";
+    if (members.length === 0) {
+      todayListEl.appendChild(emptyRow("No one has signed in yet."));
+      return;
+    }
+    members.forEach(function (member) {
+      todayListEl.appendChild(row(member.name, member.at));
+    });
+  }
+
+  function renderSeason(season) {
+    seasonPracticesEl.textContent = String((season && season.practices) || 0);
+    seasonSigninsEl.textContent = String((season && season.signins) || 0);
+    seasonListEl.innerHTML = "";
+    var members = (season && season.members) || [];
+    if (members.length === 0) {
+      seasonListEl.appendChild(emptyRow("No sign-ins recorded yet."));
+      return;
+    }
+    members.forEach(function (member) {
+      seasonListEl.appendChild(row(member.name, member.count));
+    });
+  }
+
+  function row(name, value) {
+    var li = document.createElement("li");
+    var label = document.createElement("span");
+    label.textContent = name == null ? "" : String(name);
+    var meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = value == null ? "" : String(value);
+    li.appendChild(label);
+    li.appendChild(meta);
+    return li;
+  }
+
+  function emptyRow(text) {
+    var li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = text;
+    return li;
+  }
+
+  function tickCountdown() {
+    if (deadline === 0) {
+      secondsEl.textContent = "--";
+      barEl.style.width = "0%";
+      return;
+    }
+    var remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    secondsEl.textContent = String(remaining);
+    barEl.style.width =
+      Math.max(0, Math.min(1, remaining / WINDOW_SECONDS)) * 100 + "%";
+    if (remaining === 0) {
+      if (demoMode) {
+        deadline = Date.now() + WINDOW_SECONDS * 1000;
+      } else if (!fetching) {
+        poll();
+      }
+    }
+  }
+
+  function showOffline() {
+    offlineEl.className = "offline";
+    setStatus(
+      everLoaded
+        ? "Connection lost — retrying every 20 seconds."
+        : "Connecting to the display server…",
+      everLoaded ? "err" : "busy"
+    );
+  }
+
+  function hideOffline() {
+    offlineEl.className = "offline hidden";
   }
 
   function setStatus(text, kind) {
@@ -25,139 +183,12 @@
     statusEl.className = "status" + (kind ? " " + kind : "");
   }
 
-  function api(action, params) {
-    return new Promise(function (resolve, reject) {
-      var sep = apiUrl.indexOf("?") === -1 ? "?" : "&";
-      var query = "action=" + encodeURIComponent(action);
-      for (var key in params) {
-        if (Object.prototype.hasOwnProperty.call(params, key)) {
-          query += "&" + key + "=" + encodeURIComponent(params[key]);
-        }
-      }
-      var cb = "__glitch_payload_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
-      var timer = setTimeout(function () {
-        cleanup();
-        reject(new Error("No response from the server (timeout)."));
-      }, 15000);
-
-      function cleanup() {
-        clearTimeout(timer);
-        if (script.parentNode) script.parentNode.removeChild(script);
-        delete window[cb];
-      }
-
-      var script = document.createElement("script");
-      script.onerror = function () {
-        cleanup();
-        reject(new Error("Could not reach the server."));
-      };
-      window[cb] = function (payload) {
-        cleanup();
-        resolve(payload);
-      };
-      script.src = apiUrl + sep + query + "&callback=" + cb;
-      document.head.appendChild(script);
-    });
-  }
-
-  function loadDemoMembers() {
-    memberSelect.innerHTML = "";
-    memberSelect.appendChild(emptyOption("Select your name"));
-    cfg.demoMembers.forEach(function (name) {
-      memberSelect.appendChild(new Option(name, name));
-    });
-    memberSelect.disabled = false;
-    submitBtn.disabled = false;
-  }
-
-  function loadMembers() {
-    setStatus("Loading roster…", "busy");
-    api("list", {})
-      .then(function (payload) {
-        if (!payload || !payload.ok || !Array.isArray(payload.members)) {
-          throw new Error(payload && payload.error ? payload.error : "The roster could not be loaded.");
-        }
-        memberSelect.innerHTML = "";
-        memberSelect.appendChild(emptyOption("Select your name"));
-        payload.members.forEach(function (entry) {
-          var name = typeof entry === "string" ? entry : entry.name;
-          var label = typeof entry === "string" ? entry : entry.subteam ? name + " — " + entry.subteam : name;
-          memberSelect.appendChild(new Option(label, name));
-        });
-        memberSelect.disabled = false;
-        if (payload.members.length === 0) throw new Error("The roster is empty — add members to the Roster tab.");
-        submitBtn.disabled = false;
-        setStatus("", "");
+  function clockNow() {
+    var now = new Date();
+    return [now.getHours(), now.getMinutes(), now.getSeconds()]
+      .map(function (part) {
+        return String(part).padStart(2, "0");
       })
-      .catch(function (err) {
-        memberSelect.disabled = false;
-        submitBtn.disabled = true;
-        setStatus(err.message || "Could not load the roster.", "err");
-      });
-  }
-
-  function emptyOption(text) {
-    var opt = new Option(text, "");
-    opt.disabled = true;
-    opt.selected = true;
-    return opt;
-  }
-
-  function onSignIn(event) {
-    event.preventDefault();
-    var name = memberSelect.value;
-    var code = codeInput.value.trim();
-
-    if (!name) {
-      return fail("Select your name first.");
-    }
-    if (!code) {
-      return fail("Enter today's code.");
-    }
-    if (code.length < 6) {
-      return fail("That code looks too short — check the code box at the shop.");
-    }
-
-    submitBtn.disabled = true;
-    setStatus("Signing you in…", "busy");
-
-    if (demoMode) {
-      setTimeout(function () {
-        var ok = String(code).toUpperCase() === String(cfg.demoPasscode).toUpperCase();
-        submitBtn.disabled = false;
-        if (ok) {
-          setStatus("Demo sign-in successful (" + name + ").", "ok");
-          codeInput.value = "";
-        } else {
-          fail("Wrong demo code — try " + cfg.demoPasscode + ".", true);
-        }
-      }, 400);
-      return;
-    }
-
-    api("signin", { member: name, code: code })
-      .then(function (payload) {
-        submitBtn.disabled = false;
-        if (!payload || payload.ok !== true) {
-          var msg = payload && payload.error ? payload.error : "Sign-in failed. Ask a mentor.";
-          fail(msg, true);
-          return;
-        }
-        setStatus("You're signed in, " + name + ". See you at practice!", "ok");
-        codeInput.value = "";
-      })
-      .catch(function (err) {
-        submitBtn.disabled = false;
-        fail(err.message || "Network error — try again or ask a mentor.", true);
-      });
-  }
-
-  function fail(message, shake) {
-    setStatus(message, "err");
-    if (shake) {
-      form.classList.remove("shake");
-      void form.offsetWidth;
-      form.classList.add("shake");
-    }
+      .join(":");
   }
 })();

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Glitch Robotics — Attendance Sign-in</title>
+  <title>Glitch Robotics — Attendance Display</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="config.js"></script>
 </head>
@@ -11,33 +11,49 @@
   <main class="card">
     <header>
       <h1>GLITCH <span>ROBOTICS</span></h1>
-      <p class="tagline">ATTENDANCE SIGN-IN</p>
+      <p class="tagline">PRACTICE ATTENDANCE</p>
     </header>
 
-    <form id="signin-form" novalidate>
-      <label for="member">Your name</label>
-      <select id="member" name="member" required disabled>
-        <option value="">Loading your name…</option>
-      </select>
+    <div id="offline" class="offline hidden">
+      Offline — waiting for the bot to come back
+    </div>
 
-      <label for="code">Today's code</label>
-      <input
-        id="code"
-        name="code"
-        type="text"
-        inputmode="text"
-        autocomplete="off"
-        spellcheck="false"
-        placeholder="GL-____"
-        required
-      />
+    <section class="code-panel" aria-label="Current sign-in code">
+      <p class="code-label">SIGN-IN CODE</p>
+      <div id="code" class="code muted">----</div>
+      <div class="countdown" aria-hidden="true">
+        <div id="countdown-bar" class="countdown-bar"></div>
+      </div>
+      <p class="countdown-caption">
+        <span id="countdown-seconds">--</span>s until the code changes
+      </p>
+      <p id="team-info" class="team-info muted"></p>
+    </section>
 
-      <button id="submit" type="submit" disabled>Sign in</button>
-    </form>
+    <section class="attendance">
+      <div class="panel">
+        <h2>Today <span id="today-count" class="badge">0</span></h2>
+        <ul id="today-list" class="member-list"></ul>
+      </div>
+      <div class="panel">
+        <h2>Season</h2>
+        <div class="season-totals">
+          <div class="season-stat">
+            <span id="season-practices" class="big">0</span>
+            <span class="label">practices</span>
+          </div>
+          <div class="season-stat">
+            <span id="season-signins" class="big">0</span>
+            <span class="label">sign-ins</span>
+          </div>
+        </div>
+        <ul id="season-list" class="member-list"></ul>
+      </div>
+    </section>
 
     <p id="status" class="status" role="status" aria-live="polite"></p>
 
-    <footer>Sign in once per practice · ask a mentor if you need help</footer>
+    <footer>Sign in on Discord with <code>/signin &lt;team number&gt;</code></footer>
   </main>
 
   <script src="app.js"></script>

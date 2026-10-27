@@ -11,8 +11,10 @@ const {
 } = require("discord.js");
 
 const store = require("./store");
-
-const BACKEND_TIMEOUT_MS = 15000;
+const roster = require("./roster");
+const attendance = require("./attendance");
+const codes = require("./codes");
+const server = require("./server");
 
 /* ---------- minimal .env loader (Replit Secrets take precedence) ---------- */
 
@@ -37,64 +39,25 @@ function loadEnvFile() {
   }
 }
 
-/* ---------- backend (same Apps Script the QR web app uses) ---------- */
-
-async function api(action, params) {
-  const url = new URL(process.env.APPS_SCRIPT_URL);
-  url.searchParams.set("action", action);
-  for (const [key, value] of Object.entries(params || {})) {
-    url.searchParams.set(key, value);
-  }
-  const Abort = globalThis.AbortController;
-  const controller = Abort ? new Abort() : null;
-  const timer = controller
-    ? setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS)
-    : null;
-  try {
-    const res = await fetch(url.toString(), {
-      redirect: "follow",
-      signal: controller ? controller.signal : undefined,
-    });
-    const text = await res.text();
-    return JSON.parse(text.replace(/^\uFEFF/, ""));
-  } catch (err) {
-    if (err.name === "AbortError") {
-      throw new Error("The attendance server timed out — try again in a moment.");
-    }
-    throw new Error("Could not reach the attendance server. Ask a mentor.");
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-async function fetchRoster() {
-  const payload = await api("list", {});
-  if (!payload || payload.ok !== true || !Array.isArray(payload.members)) {
-    throw new Error((payload && payload.error) || "The roster could not be loaded.");
-  }
-  return payload.members;
-}
-
 /* ---------- command handlers ---------- */
 
 async function handleLink(interaction) {
   const name = interaction.options.getString("name", true).trim();
-  let roster;
+  let match;
   try {
-    roster = await fetchRoster();
+    match = roster.find(name);
   } catch (err) {
     return interaction.editReply(err.message);
   }
-  const match = roster.find((m) => m.name.toLowerCase() === name.toLowerCase());
   if (!match) {
     return interaction.editReply(
-      `"${name}" isn't on the roster. Ask a mentor to add it, or check the spelling against the roster list.`
+      `"${name}" isn't on the roster. Ask a mentor to add it to data/roster.csv, or check the spelling.`
     );
   }
   await store.set(interaction.user.id, match.name);
   const subteam = match.subteam ? ` (${match.subteam})` : "";
   return interaction.editReply(
-    `Linked your Discord to **${match.name}**${subteam}. You're all set — use \`/signin <code>\` at practice.`
+    `Linked your Discord to **${match.name}**${subteam}. You're all set — use \`/signin <team number>\` at practice.`
   );
 }
 
@@ -105,26 +68,35 @@ async function handleSignIn(interaction) {
       "You're not linked yet. Run `/link <your roster name>` once first."
     );
   }
-  const code = interaction.options.getString("code", true);
-  await interaction.editReply("Signing you in…");
 
-  let payload;
-  try {
-    payload = await api("signin", { member: linkedName, code });
-  } catch (err) {
-    return interaction.editReply(err.message);
-  }
-
-  if (!payload || payload.ok !== true) {
-    if (payload && payload.already) {
-      return interaction.editReply("You're already signed in for today.");
-    }
+  const code = interaction.options.getString("code", true).trim();
+  if (!/^\d{4}$/.test(code)) {
     return interaction.editReply(
-      `Sign-in failed: ${(payload && payload.error) || "unknown error — ask a mentor."}`
+      "That's not a 4-digit team number — check the big number on the display site and try again."
+    );
+  }
+  if (!codes.current()) {
+    return interaction.editReply(
+      "Sign-ins aren't open yet — the display hasn't picked a team code. Try again in a minute."
+    );
+  }
+  if (!codes.isValid(code)) {
+    return interaction.editReply(
+      "That's not the current team number — the display changes every 60 seconds, so re-read it and try again."
     );
   }
 
-  const name = payload.name || linkedName;
+  const result = await attendance.signIn(linkedName, code);
+  if (!result || result.ok !== true) {
+    if (result && result.already) {
+      return interaction.editReply("You're already signed in for today.");
+    }
+    return interaction.editReply(
+      `Sign-in failed: ${(result && result.error) || "unknown error — ask a mentor."}`
+    );
+  }
+
+  const name = result.name || linkedName;
   await interaction.editReply(`You're signed in, **${name}**. See you at practice!`);
   await postPublicLog(interaction, name);
 }
@@ -160,21 +132,11 @@ function requiredEnv() {
   const missing = [];
   if (!process.env.DISCORD_TOKEN) missing.push("DISCORD_TOKEN");
   if (!process.env.CLIENT_ID) missing.push("CLIENT_ID");
-  if (!process.env.APPS_SCRIPT_URL) missing.push("APPS_SCRIPT_URL");
   return missing;
 }
 
-async function main() {
-  loadEnvFile();
-
-  const missing = requiredEnv();
-  if (missing.length > 0) {
-    console.error(`[startup] Missing required environment variables: ${missing.join(", ")}`);
-    console.error("Set them as Replit Secrets or in bot/.env (see bot/.env.example), then restart.");
-    process.exit(1);
-  }
-
-  const commands = [
+function buildCommands() {
+  return [
     new SlashCommandBuilder()
       .setName("link")
       .setDescription("Link your Discord account to your roster name (one-time).")
@@ -190,16 +152,49 @@ async function main() {
       .addStringOption((opt) =>
         opt
           .setName("code")
-          .setDescription("Today's practice code (posted in Discord / on the whiteboard).")
+          .setDescription("The 4-digit team number currently shown on the display site.")
           .setRequired(true)
       ),
     new SlashCommandBuilder()
       .setName("status")
       .setDescription("Show which roster name you're linked to."),
   ].map((cmd) => cmd.toJSON());
+}
 
-  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+async function main() {
+  loadEnvFile();
 
+  const webOnly = String(process.env.WEB_ONLY || "").trim() === "1";
+  const missing = webOnly ? [] : requiredEnv();
+  if (missing.length > 0) {
+    console.error(`[startup] Missing required environment variables: ${missing.join(", ")}`);
+    console.error("Set them as Replit Secrets or in bot/.env (see bot/.env.example), then restart.");
+    process.exit(1);
+  }
+
+  if (!process.env.TBA_AUTH_KEY) {
+    console.warn(
+      "[startup] TBA_AUTH_KEY is not set — team validation is disabled. " +
+        "Sign-ins only work while a cached team exists (degraded mode)."
+    );
+  }
+
+  try {
+    const members = roster.load();
+    console.log(`[startup] Roster loaded — ${members.length} members.`);
+  } catch (err) {
+    console.error("[startup] Roster not readable yet:", err.message);
+  }
+
+  await server.start();
+  codes.start();
+
+  if (webOnly) {
+    console.log("[startup] WEB_ONLY=1 — serving the API only (no Discord login).");
+    return;
+  }
+
+  const commands = buildCommands();
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
   try {
     const route = process.env.GUILD_ID
@@ -215,12 +210,7 @@ async function main() {
     console.error("[startup] Failed to register commands:", err.message);
   }
 
-  try {
-    const roster = await fetchRoster();
-    console.log(`[startup] Backend reachable — roster has ${roster.length} members.`);
-  } catch (err) {
-    console.error("[startup] Backend not reachable yet:", err.message);
-  }
+  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
   client.once("ready", () => {
     console.log(`[bot] Logged in as ${client.user.tag}.`);

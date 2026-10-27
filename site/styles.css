@@ -1,11 +1,15 @@
 :root {
   --bg: #101322;
   --panel: #1b2140;
+  --panel-2: #151a33;
   --accent: #7ce38b;
+  --accent-2: #ffd166;
   --text: #ffffff;
   --muted: #9aa3c7;
   --border: #2c3354;
   --danger: #ff7b7b;
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
 }
 
 * {
@@ -15,26 +19,26 @@
 html,
 body {
   margin: 0;
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
-  background: radial-gradient(1200px 800px at 50% -10%, var(--panel), var(--bg) 70%);
+  background: radial-gradient(1400px 900px at 50% -10%, var(--panel), var(--bg) 70%);
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 28px 20px;
 }
 
 .card {
   width: 100%;
-  max-width: 420px;
+  max-width: 900px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 28px 28px 20px;
+  border-radius: 18px;
+  padding: 30px 32px 22px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 
@@ -47,8 +51,8 @@ header {
 
 h1 {
   margin: 0;
-  font-size: 30px;
-  letter-spacing: 2px;
+  font-size: clamp(26px, 4vw, 40px);
+  letter-spacing: 3px;
 }
 
 h1 span {
@@ -56,80 +60,194 @@ h1 span {
 }
 
 .tagline {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   font-size: 12px;
-  letter-spacing: 4px;
+  letter-spacing: 5px;
   color: var(--muted);
 }
 
-form {
+.offline {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--danger);
+  background: rgba(255, 123, 123, 0.12);
+  color: var(--danger);
+  font-size: 15px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.hidden {
+  display: none;
+}
+
+.code-panel {
+  text-align: center;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 20px 18px;
+  margin-bottom: 24px;
+}
+
+.code-label {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 5px;
+  color: var(--muted);
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: clamp(84px, 17vw, 176px);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  margin: 4px 0 10px;
+  text-shadow: 0 0 34px rgba(124, 227, 139, 0.28);
+}
+
+.code.muted {
+  color: var(--muted);
+  text-shadow: none;
+}
+
+.countdown {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.countdown-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 1s linear;
+}
+
+.countdown-caption {
+  margin: 10px 0 0;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.team-info {
+  margin: 14px 0 0;
+  font-size: clamp(18px, 2.6vw, 26px);
+  font-weight: bold;
+  color: var(--text);
+}
+
+.team-info.muted {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.attendance {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.panel {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge {
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.season-totals {
+  display: flex;
+  gap: 28px;
+  margin: 4px 0 14px;
+}
+
+.season-stat {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-label {
-  font-size: 13px;
-  font-weight: bold;
+.season-stat .big {
+  font-family: var(--mono);
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.season-stat .label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
   color: var(--muted);
-  margin-top: 6px;
 }
 
-select,
-input {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 100%;
-  padding: 13px 12px;
+.member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.member-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--border);
   font-size: 16px;
-  color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
 }
 
-select:focus,
-input:focus {
-  outline: none;
-  border-color: var(--accent);
+.member-list li:last-child {
+  border-bottom: none;
 }
 
-select:disabled {
+.member-list .meta {
+  font-family: var(--mono);
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
-select option {
-  color: var(--text);
-  background: var(--panel);
-}
-
-input::placeholder {
+.member-list .empty {
   color: var(--muted);
-}
-
-button {
-  margin-top: 16px;
-  padding: 14px;
-  font-size: 16px;
-  font-weight: bold;
-  letter-spacing: 1px;
-  color: var(--bg);
-  background: var(--accent);
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  justify-content: flex-start;
+  font-style: italic;
 }
 
 .status {
-  min-height: 22px;
-  margin: 14px 0 0;
-  font-size: 14px;
+  min-height: 20px;
+  margin: 18px 0 0;
+  font-size: 13px;
   text-align: center;
+  color: var(--muted);
 }
 
 .status.ok {
@@ -145,19 +263,25 @@ button:disabled {
 }
 
 footer {
-  margin-top: 18px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
-.shake {
-  animation: shake 0.35s;
+footer code {
+  font-family: var(--mono);
+  color: var(--accent);
 }
 
-@keyframes shake {
-  20% { transform: translateX(-6px); }
-  40% { transform: translateX(6px); }
-  60% { transform: translateX(-4px); }
-  80% { transform: translateX(4px); }
+@media (max-width: 720px) {
+  .attendance {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: 22px 18px 18px;
+  }
 }

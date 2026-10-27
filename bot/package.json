@@ -1,7 +1,7 @@
 {
   "name": "glitch-attendance-discord-bot",
   "version": "1.0.0",
-  "description": "Discord bot for Glitch 2.0 robotics attendance — writes to the same Google Sheet as the QR web app.",
+  "description": "Glitch 2.0 robotics attendance — Discord bot plus the HTTP API that serves the display site with a rotating 4-digit team code.",
   "main": "index.js",
   "type": "commonjs",
   "engines": {
