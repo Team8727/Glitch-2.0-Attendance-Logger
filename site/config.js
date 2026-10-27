@@ -9,11 +9,11 @@
  */
 window.GLITCH_CONFIG = {
   botApiUrl: "",
-  teamName: "GLITCH ROBOTICS",
+  title: "Glitch 2.0 Attendance",
   demoState: {
     ok: true,
     code: { teamNumber: 8727, secondsRemaining: 42 },
-    team: { number: 8727, name: "Glitch", city: "Rochester", state: "MN" },
+    team: { number: 8727, name: "Glitch 2.0", city: "Asheville", state: "NC" },
     today: {
       date: "2026-10-27",
       count: 3,

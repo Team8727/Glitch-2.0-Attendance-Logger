@@ -3,40 +3,79 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Glitch Robotics — Attendance Display</title>
+  <meta name="theme-color" content="#04F904" />
+  <title>Glitch 2.0 Attendance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Rubik+Glitch&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="styles.css" />
   <script src="config.js"></script>
 </head>
 <body>
-  <main class="card">
-    <header>
-      <h1>GLITCH <span>ROBOTICS</span></h1>
-      <p class="tagline">PRACTICE ATTENDANCE</p>
-    </header>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="scanlines" aria-hidden="true"></div>
 
-    <div id="offline" class="offline hidden">
-      Offline — waiting for the bot to come back
-    </div>
+  <section class="kiosk" aria-label="Sign-in code display">
+    <div class="kiosk-frame">
+      <div class="hud" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
-    <section class="code-panel" aria-label="Current sign-in code">
-      <p class="code-label">SIGN-IN CODE</p>
-      <div id="code" class="code muted">----</div>
-      <div class="countdown" aria-hidden="true">
-        <div id="countdown-bar" class="countdown-bar"></div>
+      <p class="kicker"><span class="idx">Live</span> Attendance Terminal<span class="dot" aria-hidden="true"></span></p>
+      <h1 id="title" class="title">Glitch 2.0 Attendance</h1>
+      <p class="instruction">Use this code to sign in</p>
+
+      <div id="offline" class="offline hidden" role="alert">
+        Offline — waiting for the bot to come back
       </div>
-      <p class="countdown-caption">
-        <span id="countdown-seconds">--</span>s until the code changes
-      </p>
-      <p id="team-info" class="team-info muted"></p>
-    </section>
 
-    <section class="attendance">
+      <div class="code-wrap">
+        <div class="code-panel">
+          <span class="pin-label">Sign-in code</span>
+          <div id="code" class="pin muted">----</div>
+          <div id="team-meta" class="meta">
+            <p id="team-name" class="org"></p>
+            <p id="team-location" class="location"></p>
+          </div>
+        </div>
+
+        <div class="expiry">
+          <div class="track" aria-hidden="true">
+            <div id="countdown-bar" class="countdown-bar"></div>
+          </div>
+          <p id="expires" class="expires">EXPIRES IN --S</p>
+        </div>
+
+        <div class="discord-embed">
+          <div class="embed-accent" aria-hidden="true"></div>
+          <div class="embed-body">
+            <div class="embed-author">
+              <span class="embed-avatar" aria-hidden="true">G2</span>
+              <span class="embed-name">Glitch Attendance</span>
+              <span class="embed-tag">App</span>
+            </div>
+            <p class="embed-text">
+              Run
+              <code class="embed-cmd">/signin <span id="embed-code" class="embed-code">----</span></code>
+              in the team Discord to sign in for today's practice.
+            </p>
+            <p class="embed-footer">Code rotates every 60 seconds</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="board" aria-label="Attendance">
+    <h2 class="kicker board-kicker">Practice attendance</h2>
+    <div class="panels">
       <div class="panel">
-        <h2>Today <span id="today-count" class="badge">0</span></h2>
+        <h3>Today <span id="today-count" class="badge">0</span></h3>
         <ul id="today-list" class="member-list"></ul>
       </div>
       <div class="panel">
-        <h2>Season</h2>
+        <h3>Season</h3>
         <div class="season-totals">
           <div class="season-stat">
             <span id="season-practices" class="big">0</span>
@@ -49,12 +88,10 @@
         </div>
         <ul id="season-list" class="member-list"></ul>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <p id="status" class="status" role="status" aria-live="polite"></p>
-
-    <footer>Sign in on Discord with <code>/signin &lt;team number&gt;</code></footer>
-  </main>
+  <p id="status" class="status" role="status" aria-live="polite"></p>
 
   <script src="app.js"></script>
 </body>

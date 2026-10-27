@@ -8,10 +8,14 @@
   var FETCH_TIMEOUT_MS = 15000;
   var WINDOW_SECONDS = 60;
 
+  var titleEl = document.getElementById("title");
   var codeEl = document.getElementById("code");
+  var teamNameEl = document.getElementById("team-name");
+  var teamLocationEl = document.getElementById("team-location");
+  var teamMetaEl = document.getElementById("team-meta");
+  var embedCodeEl = document.getElementById("embed-code");
   var barEl = document.getElementById("countdown-bar");
-  var secondsEl = document.getElementById("countdown-seconds");
-  var teamInfoEl = document.getElementById("team-info");
+  var expiresEl = document.getElementById("expires");
   var todayCountEl = document.getElementById("today-count");
   var todayListEl = document.getElementById("today-list");
   var seasonPracticesEl = document.getElementById("season-practices");
@@ -23,6 +27,8 @@
   var deadline = 0;
   var fetching = false;
   var everLoaded = false;
+
+  if (cfg.title) titleEl.textContent = String(cfg.title);
 
   setInterval(tickCountdown, 1000);
 
@@ -70,11 +76,13 @@
     if (state.code) {
       deadline = Date.now() + state.code.secondsRemaining * 1000;
       codeEl.textContent = String(state.code.teamNumber);
-      codeEl.className = "code";
+      codeEl.className = "pin";
+      embedCodeEl.textContent = String(state.code.teamNumber);
     } else {
       deadline = 0;
       codeEl.textContent = "----";
-      codeEl.className = "code muted";
+      codeEl.className = "pin muted";
+      embedCodeEl.textContent = "----";
       setStatus("Waiting for the bot to pick a team code…", "busy");
     }
 
@@ -86,17 +94,25 @@
 
   function renderTeam(team, hasCode) {
     if (team && team.name) {
-      var place = team.city
-        ? team.state
-          ? team.city + ", " + team.state
-          : team.city
-        : "";
-      teamInfoEl.textContent = place ? team.name + " — " + place : team.name;
-      teamInfoEl.className = "team-info";
+      teamNameEl.textContent = team.name;
+      teamLocationEl.textContent = placeOf(team);
+      teamMetaEl.className = "meta";
       return;
     }
-    teamInfoEl.textContent = hasCode ? "Team info unavailable" : "";
-    teamInfoEl.className = "team-info muted";
+    if (hasCode) {
+      teamNameEl.textContent = "Team info unavailable";
+      teamLocationEl.textContent = "";
+      teamMetaEl.className = "meta";
+      return;
+    }
+    teamNameEl.textContent = "";
+    teamLocationEl.textContent = "";
+    teamMetaEl.className = "meta hidden";
+  }
+
+  function placeOf(team) {
+    if (!team.city) return "";
+    return team.state ? team.city + ", " + team.state : team.city;
   }
 
   function renderToday(today) {
@@ -131,7 +147,7 @@
     var label = document.createElement("span");
     label.textContent = name == null ? "" : String(name);
     var meta = document.createElement("span");
-    meta.className = "meta";
+    meta.className = "value";
     meta.textContent = value == null ? "" : String(value);
     li.appendChild(label);
     li.appendChild(meta);
@@ -147,12 +163,12 @@
 
   function tickCountdown() {
     if (deadline === 0) {
-      secondsEl.textContent = "--";
+      expiresEl.textContent = "WAITING FOR CODE";
       barEl.style.width = "0%";
       return;
     }
     var remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    secondsEl.textContent = String(remaining);
+    expiresEl.textContent = "EXPIRES IN " + remaining + "S";
     barEl.style.width =
       Math.max(0, Math.min(1, remaining / WINDOW_SECONDS)) * 100 + "%";
     if (remaining === 0) {
