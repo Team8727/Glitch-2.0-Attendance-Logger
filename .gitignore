@@ -8,6 +8,6 @@ __pycache__/
 .venv/
 
 # Discord bot
-/bot/.env
-/bot/data/
-/bot/node_modules/
+/service/.env
+/service/data/
+/service/node_modules/
