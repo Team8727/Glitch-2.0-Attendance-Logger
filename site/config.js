@@ -8,7 +8,7 @@
  * render code path serves both demo and live data.
  */
 window.GLITCH_CONFIG = {
-  botApiUrl: "",
+  botApiUrl: "https://8727nwapi.nrd919.space",
   title: "Glitch 2.0 Attendance",
   demoState: {
     ok: true,
