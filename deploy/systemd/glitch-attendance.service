@@ -1,0 +1,22 @@
+[Unit]
+Description=Glitch 2.0 attendance service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_USER__
+WorkingDirectory=__SERVICE_DIR__
+EnvironmentFile=__SERVICE_DIR__/.env
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=__SERVICE_DIR__/data
+
+[Install]
+WantedBy=multi-user.target

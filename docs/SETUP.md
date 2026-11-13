@@ -84,6 +84,13 @@ npm start
 The service binds `127.0.0.1:3000` by default. Put a tunnel or reverse proxy in front
 of it for the public display API (see Step 5).
 
+To run it as a systemd service:
+
+```bash
+sudo ./deploy/install-service.sh
+sudo systemctl enable --now glitch-attendance
+```
+
 ### Environment
 
 | Variable | Required | Meaning |

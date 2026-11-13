@@ -22,6 +22,19 @@ npm start
 
 Node 20+ is required. There are no npm dependencies.
 
+## systemd
+
+From the repo root:
+
+```bash
+sudo ./deploy/install-service.sh
+sudo systemctl enable --now glitch-attendance
+```
+
+The unit runs as the invoking user and reads `service/.env`. It binds
+`127.0.0.1:3000` by default; expose it through Cloudflare Tunnel or a reverse
+proxy for the public display API.
+
 ## API
 
 ### Public
