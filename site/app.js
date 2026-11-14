@@ -27,6 +27,7 @@
   var deadline = 0;
   var fetching = false;
   var everLoaded = false;
+  var lastZeroPoll = 0;
 
   if (cfg.title) titleEl.textContent = String(cfg.title);
 
@@ -165,6 +166,10 @@
     if (deadline === 0) {
       expiresEl.textContent = "WAITING FOR CODE";
       barEl.style.width = "0%";
+      if (!demoMode && !fetching && performance.now() - lastZeroPoll > 2000) {
+        lastZeroPoll = performance.now();
+        poll();
+      }
       return;
     }
     var remaining = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));

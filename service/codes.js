@@ -24,7 +24,7 @@ const path = require("path");
 const tba = require("./tba");
 
 const WINDOW_MS = 60000;
-const TICK_MS = 5000;
+const TICK_MS = 1000;
 const PREFETCH_LEAD_MS = 30000;
 const MAX_ATTEMPTS = 10;
 const RECENT_LIMIT = 20;
