@@ -15,6 +15,7 @@ const path = require("path");
 const roster = require("./roster");
 const codes = require("./codes");
 const server = require("./server");
+const sheetSync = require("./sheet-sync");
 
 /* ---------- minimal .env loader (real env vars take precedence) ---------- */
 
@@ -64,10 +65,12 @@ async function main() {
 
   const httpServer = await server.start();
   codes.start();
+  sheetSync.start();
 
   const shutdown = (signal) => {
     console.log(`[shutdown] ${signal} received — stopping.`);
     codes.stop();
+    sheetSync.stop();
     httpServer.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   };

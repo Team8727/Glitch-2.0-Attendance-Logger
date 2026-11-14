@@ -72,7 +72,7 @@ function isRealDate(date) {
   return !Number.isNaN(date.getTime());
 }
 
-function signIn(name, code) {
+function signIn(name, code, source) {
   return mutate((rows) => {
     const canonical = String(name || "").trim();
     if (!canonical) return { ok: false, error: "Missing member name." };
@@ -92,6 +92,7 @@ function signIn(name, code) {
       ts: new Date().toISOString(),
       name: canonical,
       code: String(code || "").slice(0, MAX_CODE_LENGTH),
+      source: String(source || ""),
     });
     return { ok: true, name: canonical };
   });
@@ -125,4 +126,8 @@ function seasonStats() {
   return { practices: practiceDates.size, signins: rows.length, members };
 }
 
-module.exports = { signIn, todayList, seasonStats };
+function all() {
+  return load();
+}
+
+module.exports = { signIn, todayList, seasonStats, all };

@@ -27,6 +27,7 @@ const attendance = require("./attendance");
 const roster = require("./roster");
 const store = require("./store");
 const pins = require("./pins");
+const sheetSync = require("./sheet-sync");
 const tba = require("./tba");
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -245,7 +246,7 @@ async function handleKioskSetPin(req, res) {
   }
 
   await pins.set(match.name, pin);
-  const result = await attendance.signIn(match.name, code);
+  const result = await attendance.signIn(match.name, code, "kiosk");
   if (result && result.already) {
     return sendJson(res, 200, { ok: true, name: match.name, already: true }, false);
   }
@@ -305,7 +306,7 @@ async function handleMentorSignIn(req, res) {
     );
   }
 
-  const result = await attendance.signIn(match.name, "mentor");
+  const result = await attendance.signIn(match.name, "mentor", "mentor");
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -431,7 +432,7 @@ async function handleKioskSignIn(req, res) {
     );
   }
 
-  const result = await attendance.signIn(match.name, code);
+  const result = await attendance.signIn(match.name, code, "kiosk");
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -599,7 +600,7 @@ async function handleSignIn(req, res) {
     );
   }
 
-  const result = await attendance.signIn(linkedName, code);
+  const result = await attendance.signIn(linkedName, code, "discord");
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -710,7 +711,12 @@ async function handler(req, res) {
     return sendJson(
       res,
       200,
-      { ok: true, uptime: Math.round(process.uptime()), codeReady: Boolean(codes.current()) },
+      {
+        ok: true,
+        uptime: Math.round(process.uptime()),
+        codeReady: Boolean(codes.current()),
+        sheets: sheetSync.status(),
+      },
       true
     );
   }

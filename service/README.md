@@ -71,6 +71,11 @@ All under `service/data/` (gitignored):
 
 The roster is `data/roster.csv` at the repo root (override with `ROSTER_CSV`).
 
+## Google Sheets
+
+The service can append new sign-ins to a Google Sheet through an Apps Script
+webhook. See `docs/GOOGLE-SHEETS.md` for the full setup.
+
 ## Environment
 
 | Variable | Meaning |
