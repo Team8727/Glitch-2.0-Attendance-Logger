@@ -19,6 +19,8 @@
 
 const http = require("http");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 const codes = require("./codes");
 const attendance = require("./attendance");
@@ -27,6 +29,7 @@ const store = require("./store");
 const tba = require("./tba");
 
 const MAX_BODY_BYTES = 16 * 1024;
+const KIOSK_DIR = path.join(__dirname, "kiosk");
 
 function sendJson(res, status, payload, cors) {
   const body = JSON.stringify(payload);
@@ -93,6 +96,151 @@ function requireBot(req, res) {
     return false;
   }
   return true;
+}
+
+function requireKiosk(res, token) {
+  const expected = process.env.KIOSK_TOKEN;
+  if (!expected) {
+    sendError(res, 503, "Kiosk is disabled: KIOSK_TOKEN is not set.", false);
+    return false;
+  }
+  if (!token || !safeEqual(token, expected)) {
+    sendError(res, 401, "Unauthorized.", false);
+    return false;
+  }
+  return true;
+}
+
+function unlinkedMembers() {
+  const linked = new Set(
+    Object.values(store.all()).map((name) => String(name || "").trim().toLowerCase())
+  );
+  return roster
+    .load()
+    .filter((member) => !linked.has(member.name.toLowerCase()))
+    .map((member) => ({ name: member.name, subteam: member.subteam || "" }));
+}
+
+function serveKiosk(req, res, pathname) {
+  const files = {
+    "/kiosk": ["index.html", "text/html; charset=utf-8"],
+    "/kiosk/": ["index.html", "text/html; charset=utf-8"],
+    "/kiosk/app.js": ["app.js", "text/javascript; charset=utf-8"],
+    "/kiosk/styles.css": ["styles.css", "text/css; charset=utf-8"],
+  };
+  const entry = files[pathname];
+  if (!entry) return false;
+  const full = path.join(KIOSK_DIR, entry[0]);
+  if (!full.startsWith(KIOSK_DIR)) return false;
+  try {
+    const body = fs.readFileSync(full);
+    res.writeHead(200, { "Content-Type": entry[1], "Cache-Control": "no-store" });
+    res.end(body);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function handleKioskRoster(req, res) {
+  const url = new URL(req.url, "http://localhost");
+  if (!requireKiosk(res, url.searchParams.get("token"))) return;
+  try {
+    return sendJson(res, 200, { ok: true, members: unlinkedMembers() }, false);
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+}
+
+async function handleKioskSignIn(req, res) {
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (err) {
+    return sendError(res, err.status || 400, err.message, false);
+  }
+  if (!requireKiosk(res, body.token)) return;
+
+  const name = String(body.name || "").trim();
+  const code = String(body.code || "").trim();
+  if (!name) return sendError(res, 400, "Select your name.", false);
+  if (!/^\d{4}$/.test(code)) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, error: "invalid_format", message: "Enter the 4-digit code from the display." },
+      false
+    );
+  }
+
+  let members;
+  try {
+    members = unlinkedMembers();
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+  const match = members.find((member) => member.name.toLowerCase() === name.toLowerCase());
+  if (!match) {
+    return sendJson(
+      res,
+      404,
+      {
+        ok: false,
+        error: "not_eligible",
+        message:
+          "That name isn't available for kiosk sign-in. It may already be linked to Discord, or not on the roster.",
+      },
+      false
+    );
+  }
+
+  if (!codes.current()) {
+    return sendJson(
+      res,
+      503,
+      {
+        ok: false,
+        error: "code_unavailable",
+        message: "Sign-ins aren't open yet — the display hasn't picked a team code. Try again in a minute.",
+      },
+      false
+    );
+  }
+  if (!codes.isValid(code)) {
+    return sendJson(
+      res,
+      400,
+      {
+        ok: false,
+        error: "invalid_code",
+        message: "That's not the current team number — re-read the display and try again.",
+      },
+      false
+    );
+  }
+
+  const result = await attendance.signIn(match.name, code);
+  if (!result || result.ok !== true) {
+    if (result && result.already) {
+      return sendJson(
+        res,
+        409,
+        { ok: false, already: true, error: "already_signed_in", message: "You're already signed in for today." },
+        false
+      );
+    }
+    return sendJson(
+      res,
+      500,
+      {
+        ok: false,
+        error: "signin_failed",
+        message: `Sign-in failed: ${(result && result.error) || "unknown error — ask a mentor."}`,
+      },
+      false
+    );
+  }
+  return sendJson(res, 200, { ok: true, name: result.name || match.name }, false);
 }
 
 function buildState() {
@@ -285,6 +433,16 @@ async function handler(req, res) {
     });
     res.end();
     return;
+  }
+
+  if (req.method === "GET" && serveKiosk(req, res, pathname)) return;
+
+  if (req.method === "GET" && pathname === "/api/kiosk/roster") {
+    return handleKioskRoster(req, res);
+  }
+
+  if (req.method === "POST" && pathname === "/api/kiosk/signin") {
+    return handleKioskSignIn(req, res);
   }
 
   if (req.method === "GET" && pathname === "/api/state") {

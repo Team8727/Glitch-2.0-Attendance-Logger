@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Glitch 2.0 Sign-In</title>
+    <link rel="stylesheet" href="/kiosk/styles.css" />
+  </head>
+  <body>
+    <main class="card">
+      <h1>Glitch 2.0 Sign-In</h1>
+      <p class="muted">Select your name and enter the 4-digit code from the display.</p>
+      <form id="signin-form">
+        <label for="name">Name</label>
+        <select id="name" required>
+          <option value="">Loading roster…</option>
+        </select>
+        <label for="code">Code</label>
+        <input id="code" name="code" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required />
+        <button type="submit">Sign in</button>
+        <p id="status" class="status" role="status"></p>
+      </form>
+    </main>
+    <script src="/kiosk/app.js"></script>
+  </body>
+</html>
