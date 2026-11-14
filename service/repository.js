@@ -208,7 +208,7 @@ async function signOut(name) {
 async function todayList() {
   const date = localDate();
   const { rows } = await db.query(
-    `SELECT m.first_name, m.last_name, a.ts, a.left_at,
+    `SELECT m.first_name, m.last_name, m.subteam, a.ts, a.left_at,
             to_char(a.ts AT TIME ZONE $2, 'HH24:MI') AS at,
             to_char(a.left_at AT TIME ZONE $2, 'HH24:MI') AS left_at_time
        FROM attendance a
@@ -222,6 +222,7 @@ async function todayList() {
     count: rows.length,
     members: rows.map((row) => ({
       name: fullName(row),
+      subteam: row.subteam || "",
       at: row.at,
       ts: row.ts.toISOString(),
       leftAt: row.left_at ? row.left_at.toISOString() : null,
