@@ -198,7 +198,8 @@
       regPin.value = "";
       regConfirm.value = "";
       hideRegisterForm();
-      setStatus(`Registered as ${data.name}. Enter the code to sign in.`, "ok");
+      const first = String(data.name || "").trim().split(/\s+/)[0] || "";
+      setStatus(`Registered as ${first}. Enter the code to sign in.`, "ok");
     } catch (err) {
       setRegisterStatus(err.message, "err");
     } finally {

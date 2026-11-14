@@ -53,6 +53,8 @@ function mapMember(row) {
   return {
     id: row.id,
     name: fullName(row),
+    firstName: row.first_name || "",
+    lastName: row.last_name || "",
     subteam: row.subteam || "",
     discordId: row.discord_id || null,
     hasPin: Boolean(row.has_pin),
@@ -362,6 +364,8 @@ async function attendanceForExport(range) {
     firstName: row.first_name,
     lastName: row.last_name,
     name: fullName(row),
+    firstName: row.first_name || "",
+    lastName: row.last_name || "",
     subteam: row.subteam || "",
     signIn: row.sign_in || "",
     signOut: row.sign_out || "",

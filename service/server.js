@@ -685,34 +685,43 @@ async function handleLink(req, res) {
   }
 
   const discordId = String(body.discordId || "").trim();
+  const firstName = String(body.firstName || "").trim();
+  const lastName = String(body.lastName || "").trim();
   const name = String(body.name || "").trim();
   const subteam = String(body.subteam || "").trim();
   if (!discordId) return sendError(res, 400, "Missing discordId.", false);
-  if (!name) return sendError(res, 400, "Missing name.", false);
 
+  let first = firstName;
+  let last = lastName;
+  if ((!first || !last) && name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    first = parts[0] || "";
+    last = parts.slice(1).join(" ");
+  }
+  if (!first || !last) {
+    return sendJson(
+      res,
+      400,
+      {
+        ok: false,
+        error: "name_required",
+        message: "Enter your first and last name so I can create your roster entry.",
+      },
+      false
+    );
+  }
+
+  const fullName = `${first} ${last}`.trim();
   let match;
   let created = false;
   try {
-    match = await repo.findMember(name);
+    match = await repo.findMember(fullName);
   } catch (err) {
     return sendError(res, 500, err.message, false);
   }
   if (!match) {
-    const parts = name.split(/\s+/).filter(Boolean);
-    if (parts.length < 2) {
-      return sendJson(
-        res,
-        400,
-        {
-          ok: false,
-          error: "name_required",
-          message: "Enter your first and last name so I can create your roster entry.",
-        },
-        false
-      );
-    }
     try {
-      match = await repo.addMember(parts[0], parts.slice(1).join(" "), subteam);
+      match = await repo.addMember(first, last, subteam);
       created = true;
     } catch (err) {
       if (err.code === "23505") {
@@ -753,7 +762,14 @@ async function handleLink(req, res) {
   return sendJson(
     res,
     200,
-    { ok: true, name: match.name, subteam: subteam || match.subteam || "", created },
+    {
+      ok: true,
+      name: match.name,
+      firstName: first,
+      lastName: last,
+      subteam: subteam || match.subteam || "",
+      created,
+    },
     false
   );
 }
@@ -764,7 +780,13 @@ async function handleGetLink(req, res, discordId) {
   return sendJson(
     res,
     200,
-    { ok: true, linked: Boolean(member), name: member ? member.name : null },
+    {
+      ok: true,
+      linked: Boolean(member),
+      name: member ? member.name : null,
+      firstName: member ? member.firstName : null,
+      lastName: member ? member.lastName : null,
+    },
     false
   );
 }
