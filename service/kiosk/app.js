@@ -4,12 +4,43 @@
   const form = document.getElementById("signin-form");
   const nameSelect = document.getElementById("name");
   const codeInput = document.getElementById("code");
+  const pinSection = document.getElementById("pin-section");
+  const pinInput = document.getElementById("pin");
+  const setPinSection = document.getElementById("set-pin-section");
+  const newPinInput = document.getElementById("new-pin");
+  const confirmPinInput = document.getElementById("confirm-pin");
+  const submitButton = document.getElementById("submit-button");
   const statusEl = document.getElementById("status");
   const token = new URLSearchParams(window.location.search).get("token") || "";
+
+  let members = [];
 
   function setStatus(text, kind) {
     statusEl.textContent = text;
     statusEl.className = "status" + (kind ? " " + kind : "");
+  }
+
+  function selectedMember() {
+    return members.find((member) => member.name === nameSelect.value) || null;
+  }
+
+  function updatePinFields() {
+    const member = selectedMember();
+    if (!member) {
+      pinSection.classList.add("hidden");
+      setPinSection.classList.add("hidden");
+      submitButton.textContent = "Sign in";
+      return;
+    }
+    if (member.hasPin) {
+      pinSection.classList.remove("hidden");
+      setPinSection.classList.add("hidden");
+      submitButton.textContent = "Sign in";
+    } else {
+      pinSection.classList.add("hidden");
+      setPinSection.classList.remove("hidden");
+      submitButton.textContent = "Set PIN & sign in";
+    }
   }
 
   async function loadRoster() {
@@ -23,47 +54,74 @@
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "Could not load the roster.");
+      members = data.members || [];
       nameSelect.innerHTML = "";
       const placeholder = document.createElement("option");
       placeholder.value = "";
-      placeholder.textContent = data.members.length ? "Select your name" : "No unlinked members";
+      placeholder.textContent = members.length ? "Select your name" : "No unlinked members";
       nameSelect.appendChild(placeholder);
-      for (const member of data.members) {
+      for (const member of members) {
         const option = document.createElement("option");
         option.value = member.name;
         option.textContent = member.subteam ? `${member.name} (${member.subteam})` : member.name;
         nameSelect.appendChild(option);
       }
+      updatePinFields();
     } catch (err) {
       setStatus(err.message, "err");
     }
   }
 
+  nameSelect.addEventListener("change", updatePinFields);
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const name = nameSelect.value;
+    const member = selectedMember();
     const code = codeInput.value.trim();
-    if (!name) return setStatus("Select your name first.", "err");
+    if (!member) return setStatus("Select your name first.", "err");
     if (!/^\d{4}$/.test(code)) return setStatus("Enter the 4-digit code from the display.", "err");
 
-    const button = form.querySelector("button");
-    button.disabled = true;
+    let endpoint = "/api/kiosk/signin";
+    let body = { token, name: member.name, code };
+
+    if (member.hasPin) {
+      const pin = pinInput.value.trim();
+      if (!/^\d{4,6}$/.test(pin)) return setStatus("Enter your 4–6 digit PIN.", "err");
+      body.pin = pin;
+    } else {
+      const pin = newPinInput.value.trim();
+      const confirm = confirmPinInput.value.trim();
+      if (!/^\d{4,6}$/.test(pin)) return setStatus("Choose a 4–6 digit PIN.", "err");
+      if (pin !== confirm) return setStatus("The PINs don't match.", "err");
+      endpoint = "/api/kiosk/set-pin";
+      body.pin = pin;
+    }
+
+    submitButton.disabled = true;
     setStatus("Signing in…");
     try {
-      const response = await fetch("/api/kiosk/signin", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, name, code }),
+        body: JSON.stringify(body),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.message || data.error || "Sign-in failed.");
-      setStatus(`You're signed in, ${data.name}. See you at practice!`, "ok");
+      if (data.already) {
+        setStatus(`PIN set. You're already signed in for today, ${data.name}.`, "ok");
+      } else {
+        setStatus(`You're signed in, ${data.name}. See you at practice!`, "ok");
+      }
       codeInput.value = "";
+      pinInput.value = "";
+      newPinInput.value = "";
+      confirmPinInput.value = "";
       nameSelect.value = "";
+      await loadRoster();
     } catch (err) {
       setStatus(err.message, "err");
     } finally {
-      button.disabled = false;
+      submitButton.disabled = false;
     }
   });
 

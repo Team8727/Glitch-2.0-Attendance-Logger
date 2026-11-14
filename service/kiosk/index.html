@@ -15,9 +15,24 @@
         <select id="name" required>
           <option value="">Loading roster…</option>
         </select>
+
         <label for="code">Code</label>
         <input id="code" name="code" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required />
-        <button type="submit">Sign in</button>
+
+        <div id="pin-section" class="hidden">
+          <label for="pin">PIN</label>
+          <input id="pin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="off" />
+        </div>
+
+        <div id="set-pin-section" class="hidden">
+          <p class="hint">First time? Set a 4–6 digit PIN so friends can't sign you in.</p>
+          <label for="new-pin">New PIN</label>
+          <input id="new-pin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="off" />
+          <label for="confirm-pin">Confirm PIN</label>
+          <input id="confirm-pin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="off" />
+        </div>
+
+        <button type="submit" id="submit-button">Sign in</button>
         <p id="status" class="status" role="status"></p>
       </form>
     </main>

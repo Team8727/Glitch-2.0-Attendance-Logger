@@ -26,6 +26,7 @@ const codes = require("./codes");
 const attendance = require("./attendance");
 const roster = require("./roster");
 const store = require("./store");
+const pins = require("./pins");
 const tba = require("./tba");
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -118,7 +119,11 @@ function unlinkedMembers() {
   return roster
     .load()
     .filter((member) => !linked.has(member.name.toLowerCase()))
-    .map((member) => ({ name: member.name, subteam: member.subteam || "" }));
+    .map((member) => ({
+      name: member.name,
+      subteam: member.subteam || "",
+      hasPin: pins.has(member.name),
+    }));
 }
 
 function serveKiosk(req, res, pathname) {
@@ -152,12 +157,120 @@ function handleKioskRoster(req, res) {
   }
 }
 
+async function handleKioskSetPin(req, res) {
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (err) {
+    return sendError(res, err.status || 400, err.message, false);
+  }
+  if (!requireKiosk(res, body.token)) return;
+
+  const name = String(body.name || "").trim();
+  const code = String(body.code || "").trim();
+  const pin = String(body.pin || "").trim();
+  if (!name) return sendError(res, 400, "Select your name.", false);
+  if (!/^\d{4,6}$/.test(pin)) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, error: "invalid_pin_format", message: "Use a 4–6 digit PIN." },
+      false
+    );
+  }
+  if (!/^\d{4}$/.test(code)) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, error: "invalid_format", message: "Enter the 4-digit code from the display." },
+      false
+    );
+  }
+
+  let members;
+  try {
+    members = unlinkedMembers();
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+  const match = members.find((member) => member.name.toLowerCase() === name.toLowerCase());
+  if (!match) {
+    return sendJson(
+      res,
+      404,
+      {
+        ok: false,
+        error: "not_eligible",
+        message:
+          "That name isn't available for kiosk sign-in. It may already be linked to Discord, or not on the roster.",
+      },
+      false
+    );
+  }
+  if (pins.has(match.name)) {
+    return sendJson(
+      res,
+      409,
+      {
+        ok: false,
+        error: "pin_exists",
+        message: "A PIN is already set for that name. Ask a mentor to reset it.",
+      },
+      false
+    );
+  }
+  if (!codes.current()) {
+    return sendJson(
+      res,
+      503,
+      {
+        ok: false,
+        error: "code_unavailable",
+        message: "Sign-ins aren't open yet — the display hasn't picked a team code. Try again in a minute.",
+      },
+      false
+    );
+  }
+  if (!codes.isValid(code)) {
+    return sendJson(
+      res,
+      400,
+      {
+        ok: false,
+        error: "invalid_code",
+        message: "That's not the current team number — re-read the display and try again.",
+      },
+      false
+    );
+  }
+
+  await pins.set(match.name, pin);
+  const result = await attendance.signIn(match.name, code);
+  if (result && result.already) {
+    return sendJson(res, 200, { ok: true, name: match.name, already: true }, false);
+  }
+  if (!result || result.ok !== true) {
+    return sendJson(
+      res,
+      500,
+      {
+        ok: false,
+        error: "signin_failed",
+        message: `Sign-in failed: ${(result && result.error) || "unknown error — ask a mentor."}`,
+      },
+      false
+    );
+  }
+  return sendJson(res, 200, { ok: true, name: result.name || match.name }, false);
+}
+
 function handleMentorRoster(req, res) {
   if (!requireBot(req, res)) return;
   try {
     const members = roster.load().map((member) => ({
       name: member.name,
       subteam: member.subteam || "",
+      hasPin: pins.has(member.name),
     }));
     return sendJson(res, 200, { ok: true, members }, false);
   } catch (err) {
@@ -284,6 +397,36 @@ async function handleKioskSignIn(req, res) {
         error: "invalid_code",
         message: "That's not the current team number — re-read the display and try again.",
       },
+      false
+    );
+  }
+
+  if (!pins.has(match.name)) {
+    return sendJson(
+      res,
+      400,
+      {
+        ok: false,
+        error: "pin_required",
+        message: "First time? Set a PIN before signing in.",
+      },
+      false
+    );
+  }
+  const pin = String(body.pin || "").trim();
+  if (!pin) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, error: "pin_required", message: "Enter your PIN." },
+      false
+    );
+  }
+  if (!pins.verify(match.name, pin)) {
+    return sendJson(
+      res,
+      401,
+      { ok: false, error: "invalid_pin", message: "That PIN is incorrect." },
       false
     );
   }
@@ -486,6 +629,35 @@ async function handleSignIn(req, res) {
   return sendJson(res, 200, { ok: true, name: result.name || linkedName }, false);
 }
 
+async function handleMentorResetPin(req, res) {
+  if (!requireBot(req, res)) return;
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (err) {
+    return sendError(res, err.status || 400, err.message, false);
+  }
+  const name = String(body.name || "").trim();
+  if (!name) return sendError(res, 400, "Select a member.", false);
+
+  let match;
+  try {
+    match = roster.find(name);
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+  if (!match) {
+    return sendJson(
+      res,
+      404,
+      { ok: false, error: "not_on_roster", message: "That name isn't on the roster." },
+      false
+    );
+  }
+  await pins.remove(match.name);
+  return sendJson(res, 200, { ok: true, name: match.name }, false);
+}
+
 async function handler(req, res) {
   let pathname = "";
   try {
@@ -514,12 +686,20 @@ async function handler(req, res) {
     return handleKioskSignIn(req, res);
   }
 
+  if (req.method === "POST" && pathname === "/api/kiosk/set-pin") {
+    return handleKioskSetPin(req, res);
+  }
+
   if (req.method === "GET" && pathname === "/api/mentor/roster") {
     return handleMentorRoster(req, res);
   }
 
   if (req.method === "POST" && pathname === "/api/mentor/signin") {
     return handleMentorSignIn(req, res);
+  }
+
+  if (req.method === "POST" && pathname === "/api/mentor/reset-pin") {
+    return handleMentorResetPin(req, res);
   }
 
   if (req.method === "GET" && pathname === "/api/state") {

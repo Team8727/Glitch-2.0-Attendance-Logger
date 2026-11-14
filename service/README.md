@@ -67,6 +67,7 @@ All under `service/data/` (gitignored):
 | `links.json` | Object map of Discord ID → roster name. |
 | `code-state.json` | `{ windowStart, current, previous }` — survives restarts mid-window. |
 | `tba-cache.json` | Team info cache (name/city/state), 30-day TTL. |
+| `pins.json` | Kiosk PINs, stored as scrypt hashes with per-member salts. |
 
 The roster is `data/roster.csv` at the repo root (override with `ROSTER_CSV`).
 
