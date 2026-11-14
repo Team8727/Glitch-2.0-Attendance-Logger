@@ -27,6 +27,7 @@ const attendance = require("./attendance");
 const roster = require("./roster");
 const store = require("./store");
 const pins = require("./pins");
+const subteams = require("./subteams");
 const sheetSync = require("./sheet-sync");
 const tba = require("./tba");
 
@@ -100,6 +101,13 @@ function requireBot(req, res) {
   return true;
 }
 
+function pushSheetStatus() {
+  if (!process.env.SHEETS_WEBHOOK_URL || !process.env.SHEETS_WEBHOOK_SECRET) return;
+  sheetSync.pushRosterStatus().catch((err) => {
+    console.error("[sheets] roster status push failed:", err.message);
+  });
+}
+
 function requireKiosk(res, token) {
   const expected = process.env.KIOSK_TOKEN;
   if (!expected) {
@@ -170,7 +178,16 @@ async function handleKioskSetPin(req, res) {
   const name = String(body.name || "").trim();
   const code = String(body.code || "").trim();
   const pin = String(body.pin || "").trim();
+  const subteam = String(body.subteam || "").trim();
   if (!name) return sendError(res, 400, "Select your name.", false);
+  if (!subteam) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, error: "missing_subteam", message: "Select your subteam." },
+      false
+    );
+  }
   if (!/^\d{4,6}$/.test(pin)) {
     return sendJson(
       res,
@@ -245,7 +262,9 @@ async function handleKioskSetPin(req, res) {
     );
   }
 
+  await subteams.set(match.name, subteam);
   await pins.set(match.name, pin);
+  pushSheetStatus();
   const result = await attendance.signIn(match.name, code, "kiosk");
   if (result && result.already) {
     return sendJson(res, 200, { ok: true, name: match.name, already: true }, false);
@@ -495,6 +514,7 @@ async function handleLink(req, res) {
 
   const discordId = String(body.discordId || "").trim();
   const name = String(body.name || "").trim();
+  const subteam = String(body.subteam || "").trim();
   if (!discordId) return sendError(res, 400, "Missing discordId.", false);
   if (!name) return sendError(res, 400, "Missing name.", false);
 
@@ -518,10 +538,12 @@ async function handleLink(req, res) {
   }
 
   await store.set(discordId, match.name);
+  if (subteam) await subteams.set(match.name, subteam);
+  pushSheetStatus();
   return sendJson(
     res,
     200,
-    { ok: true, name: match.name, subteam: match.subteam || "" },
+    { ok: true, name: match.name, subteam: subteam || match.subteam || "" },
     false
   );
 }
@@ -665,6 +687,7 @@ async function handleMentorResetPin(req, res) {
     );
   }
   await pins.remove(match.name);
+  pushSheetStatus();
   return sendJson(res, 200, { ok: true, name: match.name }, false);
 }
 

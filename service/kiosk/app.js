@@ -7,6 +7,7 @@
   const pinSection = document.getElementById("pin-section");
   const pinInput = document.getElementById("pin");
   const setPinSection = document.getElementById("set-pin-section");
+  const subteamSelect = document.getElementById("subteam");
   const newPinInput = document.getElementById("new-pin");
   const confirmPinInput = document.getElementById("confirm-pin");
   const submitButton = document.getElementById("submit-button");
@@ -39,6 +40,7 @@
     } else {
       pinSection.classList.add("hidden");
       setPinSection.classList.remove("hidden");
+      subteamSelect.value = member.subteam || "";
       submitButton.textContent = "Set PIN & sign in";
     }
   }
@@ -89,11 +91,14 @@
       if (!/^\d{4,6}$/.test(pin)) return setStatus("Enter your 4–6 digit PIN.", "err");
       body.pin = pin;
     } else {
+      const subteam = subteamSelect.value;
       const pin = newPinInput.value.trim();
       const confirm = confirmPinInput.value.trim();
+      if (!subteam) return setStatus("Select your subteam.", "err");
       if (!/^\d{4,6}$/.test(pin)) return setStatus("Choose a 4–6 digit PIN.", "err");
       if (pin !== confirm) return setStatus("The PINs don't match.", "err");
       endpoint = "/api/kiosk/set-pin";
+      body.subteam = subteam;
       body.pin = pin;
     }
 
@@ -107,15 +112,17 @@
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.message || data.error || "Sign-in failed.");
+      const first = String(data.name || "").trim().split(/\s+/)[0] || "";
       if (data.already) {
-        setStatus(`PIN set. You're already signed in for today, ${data.name}.`, "ok");
+        setStatus(`PIN set. You're already signed in for today, ${first}.`, "ok");
       } else {
-        setStatus(`You're signed in, ${data.name}. See you at practice!`, "ok");
+        setStatus(`You're signed in, ${first}. See you at practice!`, "ok");
       }
       codeInput.value = "";
       pinInput.value = "";
       newPinInput.value = "";
       confirmPinInput.value = "";
+      subteamSelect.value = "";
       nameSelect.value = "";
       await loadRoster();
     } catch (err) {

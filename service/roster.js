@@ -12,6 +12,8 @@
 const fs = require("fs");
 const path = require("path");
 
+const subteams = require("./subteams");
+
 const DEFAULT_FILE = path.join(__dirname, "..", "data", "roster.csv");
 const DEFAULT_SHEET_FILE = path.join(__dirname, "data", "roster-sheet.json");
 
@@ -51,10 +53,7 @@ function load() {
         seen.add(key);
         members.push({
           name,
-          subteam: String((row && row.subteam) || "").trim(),
-          studentId: String((row && row.studentId) || "").trim(),
-          role: String((row && row.role) || "").trim(),
-          email: String((row && row.email) || "").trim(),
+          subteam: subteams.get(name) || String((row && row.subteam) || "").trim(),
         });
       }
       if (members.length > 0) return members;
@@ -96,7 +95,7 @@ function load() {
     seen.add(key);
     members.push({
       name,
-      subteam: subteamCol === -1 ? "" : (rows[i][subteamCol] || "").trim(),
+      subteam: subteams.get(name) || (subteamCol === -1 ? "" : (rows[i][subteamCol] || "").trim()),
     });
   }
   return members;

@@ -3,8 +3,8 @@
  *
  * Tabs:
  *   Sign-ins — appended by the attendance service
- *   Roster   — source of truth for names/subteams; status columns are written
- *              back by the service (PIN Set, Discord Linked, Discord ID)
+ *   Roster   — source of truth for First Name / Last Name; Subteam and status
+ *              columns are written back by the service.
  *
  * Setup:
  *   1. Create a Google Sheet.
@@ -23,11 +23,9 @@ const ROSTER_TAB = 'Roster';
 const SECRET = 'PASTE_SHEETS_WEBHOOK_SECRET_HERE';
 
 const ROSTER_HEADERS = [
-  'Name',
+  'First Name',
+  'Last Name',
   'Subteam',
-  'Student ID',
-  'Role',
-  'Email',
   'PIN Set',
   'Discord Linked',
   'Discord ID',
@@ -39,7 +37,6 @@ function doPost(e) {
     if (body.secret !== SECRET) {
       return json({ ok: false, error: 'unauthorized' });
     }
-
     const action = body.action || 'syncSignins';
     if (action === 'getRoster') return getRoster();
     if (action === 'updateRosterStatus') return updateRosterStatus(body.rows || []);
@@ -113,14 +110,17 @@ function getRoster() {
 
   const values = sheet.getRange(2, 1, lastRow - 1, ROSTER_HEADERS.length).getValues();
   const roster = values
-    .filter((row) => String(row[0] || '').trim())
-    .map((row) => ({
-      name: String(row[0] || '').trim(),
-      subteam: String(row[1] || '').trim(),
-      studentId: String(row[2] || '').trim(),
-      role: String(row[3] || '').trim(),
-      email: String(row[4] || '').trim(),
-    }));
+    .map((row) => {
+      const firstName = String(row[0] || '').trim();
+      const lastName = String(row[1] || '').trim();
+      return {
+        firstName,
+        lastName,
+        name: `${firstName} ${lastName}`.trim(),
+        subteam: String(row[2] || '').trim(),
+      };
+    })
+    .filter((row) => row.name);
   return json({ ok: true, roster });
 }
 
@@ -138,13 +138,14 @@ function updateRosterStatus(rows) {
   const values = range.getValues();
   let updated = 0;
   for (const row of values) {
-    const name = String(row[0] || '').trim();
+    const name = `${String(row[0] || '').trim()} ${String(row[1] || '').trim()}`.trim();
     if (!name) continue;
     const status = byName.get(name.toLowerCase());
     if (!status) continue;
-    row[5] = status.hasPin ? 'Yes' : 'No';
-    row[6] = status.discordId ? 'Yes' : 'No';
-    row[7] = status.discordId || '';
+    row[2] = status.subteam || row[2] || '';
+    row[3] = status.hasPin ? 'Yes' : 'No';
+    row[4] = status.discordId ? 'Yes' : 'No';
+    row[5] = status.discordId || '';
     updated += 1;
   }
   range.setValues(values);

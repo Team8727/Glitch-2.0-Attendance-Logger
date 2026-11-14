@@ -26,6 +26,15 @@
 
         <div id="set-pin-section" class="hidden">
           <p class="hint">First time? Set a 4–6 digit PIN so friends can't sign you in.</p>
+          <label for="subteam">Subteam</label>
+          <select id="subteam">
+            <option value="">Select your subteam</option>
+            <option>Software</option>
+            <option>Mechanical</option>
+            <option>Electrical</option>
+            <option>Business</option>
+            <option>Media</option>
+          </select>
           <label for="new-pin">New PIN</label>
           <input id="new-pin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="off" />
           <label for="confirm-pin">Confirm PIN</label>

@@ -174,6 +174,7 @@ async function pushRosterStatus() {
   );
   const rows = members.map((member) => ({
     name: member.name,
+    subteam: member.subteam || "",
     hasPin: pins.has(member.name),
     discordId: byName.get(member.name.toLowerCase()) || "",
   }));
@@ -229,4 +230,4 @@ function status() {
   };
 }
 
-module.exports = { start, stop, syncOnce, syncRoster, status };
+module.exports = { start, stop, syncOnce, syncRoster, pushRosterStatus, status };
