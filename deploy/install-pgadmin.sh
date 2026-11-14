@@ -28,7 +28,24 @@ fi
 install -d -m 0750 -o pgadmin -g pgadmin /var/lib/pgadmin
 install -d -m 0750 -o pgadmin -g pgadmin /var/log/pgadmin
 
-cat > /etc/systemd/system/pgadmin4.service <<'UNIT'
+install -d -m 0755 /etc/glitch
+CRED_FILE=/etc/glitch/pgadmin-credentials
+if [ ! -f "$CRED_FILE" ]; then
+  PGADMIN_EMAIL="${PGADMIN_EMAIL:-admin@glitch8727.com}"
+  PGADMIN_PASSWORD="${PGADMIN_PASSWORD:-$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20)}"
+  printf 'PGADMIN_EMAIL=%s\nPGADMIN_PASSWORD=%s\n' "$PGADMIN_EMAIL" "$PGADMIN_PASSWORD" > "$CRED_FILE"
+  chmod 600 "$CRED_FILE"
+fi
+# shellcheck disable=SC1090
+. "$CRED_FILE"
+
+# A failed first migration leaves a half-created SQLite DB. Reset it only when
+# the service is not running, so a working pgAdmin install is never wiped.
+if [ -f /var/lib/pgadmin/pgadmin4.db ] && ! systemctl is-active --quiet pgadmin4.service; then
+  rm -f /var/lib/pgadmin/pgadmin4.db
+fi
+
+cat > /etc/systemd/system/pgadmin4.service <<UNIT
 [Unit]
 Description=pgAdmin 4 web
 After=network-online.target postgresql.service
@@ -39,6 +56,8 @@ Type=simple
 User=pgadmin
 Group=pgadmin
 Environment=PGADMIN_SERVER_MODE=ON
+Environment=PGADMIN_SETUP_EMAIL=$PGADMIN_EMAIL
+Environment=PGADMIN_SETUP_PASSWORD=$PGADMIN_PASSWORD
 WorkingDirectory=/usr/pgadmin4/web
 ExecStart=/usr/pgadmin4/venv/bin/python /usr/pgadmin4/web/pgAdmin4.py
 Restart=on-failure
@@ -52,6 +71,9 @@ systemctl daemon-reload
 systemctl enable --now pgadmin4.service
 
 echo "[pgadmin] running on http://127.0.0.1:5050"
+echo "[pgadmin] login email: $PGADMIN_EMAIL"
+echo "[pgadmin] login password: $PGADMIN_PASSWORD"
+echo "[pgadmin] credentials saved in $CRED_FILE"
 echo "[pgadmin] add a Cloudflare public hostname:"
 echo "  8727pgadmin.nrd919.space -> http://127.0.0.1:5050"
 echo "[pgadmin] then open the dashboard and click Open pgAdmin"
