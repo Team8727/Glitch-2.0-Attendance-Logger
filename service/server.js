@@ -277,6 +277,74 @@ async function handleKioskSetPin(req, res) {
   return sendJson(res, 200, { ok: true, name: result.name || match.name }, false);
 }
 
+async function handleKioskRegister(req, res) {
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (err) {
+    return sendError(res, err.status || 400, err.message, false);
+  }
+  if (!requireKiosk(res, body.token)) return;
+
+  const firstName = String(body.firstName || "").trim();
+  const lastName = String(body.lastName || "").trim();
+  const subteam = String(body.subteam || "").trim();
+  const pin = String(body.pin || "").trim();
+  const test = Boolean(body.test);
+
+  if (!firstName || !lastName) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, error: "name_required", message: "Enter your first and last name." },
+      false
+    );
+  }
+  if (!subteam) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, error: "missing_subteam", message: "Select your subteam." },
+      false
+    );
+  }
+  if (!/^\d{4,6}$/.test(pin)) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, error: "invalid_pin_format", message: "Use a 4–6 digit PIN." },
+      false
+    );
+  }
+
+  try {
+    const member = await repo.registerMember(firstName, lastName, subteam, pin, {
+      dryrun: test,
+    });
+    if (!test) pushSheetStatus();
+    return sendJson(
+      res,
+      200,
+      { ok: true, name: member.name, subteam: member.subteam },
+      false
+    );
+  } catch (err) {
+    if (err.code === "23505") {
+      return sendJson(
+        res,
+        409,
+        {
+          ok: false,
+          error: "member_exists",
+          message: "That name is already registered. Go back and select it from the list.",
+        },
+        false
+      );
+    }
+    return sendError(res, 500, err.message, false);
+  }
+}
+
 async function handleMentorRoster(req, res) {
   if (!requireBot(req, res)) return;
   try {
@@ -623,22 +691,44 @@ async function handleLink(req, res) {
   if (!name) return sendError(res, 400, "Missing name.", false);
 
   let match;
+  let created = false;
   try {
     match = await repo.findMember(name);
   } catch (err) {
     return sendError(res, 500, err.message, false);
   }
   if (!match) {
-    return sendJson(
-      res,
-      404,
-      {
-        ok: false,
-        error: "not_on_roster",
-        message: `"${name}" isn't on the roster. Ask a mentor to add it to data/roster.csv, or check the spelling.`,
-      },
-      false
-    );
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) {
+      return sendJson(
+        res,
+        400,
+        {
+          ok: false,
+          error: "name_required",
+          message: "Enter your first and last name so I can create your roster entry.",
+        },
+        false
+      );
+    }
+    try {
+      match = await repo.addMember(parts[0], parts.slice(1).join(" "), subteam);
+      created = true;
+    } catch (err) {
+      if (err.code === "23505") {
+        return sendJson(
+          res,
+          409,
+          {
+            ok: false,
+            error: "member_exists",
+            message: "That name already exists. Try selecting it from the autocomplete list.",
+          },
+          false
+        );
+      }
+      return sendError(res, 500, err.message, false);
+    }
   }
 
   try {
@@ -663,7 +753,7 @@ async function handleLink(req, res) {
   return sendJson(
     res,
     200,
-    { ok: true, name: match.name, subteam: subteam || match.subteam || "" },
+    { ok: true, name: match.name, subteam: subteam || match.subteam || "", created },
     false
   );
 }
@@ -776,6 +866,24 @@ async function handleSignIn(req, res) {
   }
 
   return sendJson(res, 200, { ok: true, name: result.name || linkedName }, false);
+}
+
+async function handleMentorDryrun(req, res) {
+  if (!requireBot(req, res)) return;
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (err) {
+    return sendError(res, err.status || 400, err.message, false);
+  }
+  const action = String(body.action || "create").toLowerCase();
+  if (action === "clear") {
+    const removed = await repo.clearDryrun();
+    return sendJson(res, 200, { ok: true, action: "clear", removed }, false);
+  }
+  const count = Number(body.count) || 20;
+  const result = await repo.createDryrun(count);
+  return sendJson(res, 200, { ok: true, action: "create", ...result }, false);
 }
 
 async function handleMentorSyncRoster(req, res) {
@@ -898,6 +1006,10 @@ async function handler(req, res) {
     return handleKioskSetPin(req, res);
   }
 
+  if (req.method === "POST" && pathname === "/api/kiosk/register") {
+    return handleKioskRegister(req, res);
+  }
+
   if (req.method === "GET" && pathname === "/api/mentor/roster") {
     return handleMentorRoster(req, res);
   }
@@ -916,6 +1028,10 @@ async function handler(req, res) {
 
   if (req.method === "POST" && pathname === "/api/mentor/sync-roster") {
     return handleMentorSyncRoster(req, res);
+  }
+
+  if (req.method === "POST" && pathname === "/api/mentor/dryrun") {
+    return handleMentorDryrun(req, res);
   }
 
   if (req.method === "GET" && pathname === "/api/attendance/today") {

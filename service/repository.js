@@ -13,6 +13,38 @@ function localDate(date = new Date()) {
   return date.toLocaleDateString("en-CA", { timeZone: tz() });
 }
 
+function getTimeZoneOffset(date, timeZone) {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = dtf.formatToParts(date);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const asUTC = Date.UTC(
+    Number(map.year),
+    Number(map.month) - 1,
+    Number(map.day),
+    Number(map.hour),
+    Number(map.minute),
+    Number(map.second)
+  );
+  return asUTC - date.getTime();
+}
+
+function zonedTimeToUtc(dateStr, timeStr, timeZone = tz()) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const [hour, minute] = timeStr.split(":").map(Number);
+  const utc = Date.UTC(year, month - 1, day, hour, minute);
+  const offset = getTimeZoneOffset(new Date(utc), timeZone);
+  return new Date(utc - offset);
+}
+
 function fullName(row) {
   return `${row.first_name || ""} ${row.last_name || ""}`.trim();
 }
@@ -24,6 +56,7 @@ function mapMember(row) {
     subteam: row.subteam || "",
     discordId: row.discord_id || null,
     hasPin: Boolean(row.has_pin),
+    isDryrun: Boolean(row.is_dryrun),
   };
 }
 
@@ -31,7 +64,7 @@ async function listMembers({ unlinkedOnly = false } = {}) {
   const where = unlinkedOnly ? "WHERE discord_id IS NULL" : "";
   const { rows } = await db.query(
     `SELECT id, first_name, last_name, subteam, discord_id,
-            (pin_hash IS NOT NULL) AS has_pin
+            (pin_hash IS NOT NULL) AS has_pin, is_dryrun
        FROM members
        ${where}
       ORDER BY lower(first_name), lower(last_name)`
@@ -39,13 +72,38 @@ async function listMembers({ unlinkedOnly = false } = {}) {
   return rows.map(mapMember);
 }
 
-async function addMember(firstName, lastName, subteam) {
+async function addMember(firstName, lastName, subteam, { dryrun = false } = {}) {
   const { rows } = await db.query(
-    `INSERT INTO members (first_name, last_name, subteam)
-     VALUES ($1, $2, $3)
+    `INSERT INTO members (first_name, last_name, subteam, is_dryrun)
+     VALUES ($1, $2, $3, $4)
      RETURNING id, first_name, last_name, subteam, discord_id,
-               (pin_hash IS NOT NULL) AS has_pin`,
-    [String(firstName || "").trim(), String(lastName || "").trim(), String(subteam || "").trim()]
+               (pin_hash IS NOT NULL) AS has_pin, is_dryrun`,
+    [
+      String(firstName || "").trim(),
+      String(lastName || "").trim(),
+      String(subteam || "").trim(),
+      Boolean(dryrun),
+    ]
+  );
+  return mapMember(rows[0]);
+}
+
+async function registerMember(firstName, lastName, subteam, pin, { dryrun = false } = {}) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(String(pin), salt, KEY_LENGTH).toString("hex");
+  const { rows } = await db.query(
+    `INSERT INTO members (first_name, last_name, subteam, pin_salt, pin_hash, is_dryrun)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, first_name, last_name, subteam, discord_id,
+               (pin_hash IS NOT NULL) AS has_pin, is_dryrun`,
+    [
+      String(firstName || "").trim(),
+      String(lastName || "").trim(),
+      String(subteam || "").trim(),
+      salt,
+      hash,
+      Boolean(dryrun),
+    ]
   );
   return mapMember(rows[0]);
 }
@@ -55,7 +113,7 @@ async function findMember(name) {
   if (!target) return null;
   const { rows } = await db.query(
     `SELECT id, first_name, last_name, subteam, discord_id,
-            (pin_hash IS NOT NULL) AS has_pin
+            (pin_hash IS NOT NULL) AS has_pin, is_dryrun
        FROM members
       WHERE lower(first_name || ' ' || last_name) = lower($1)
       LIMIT 1`,
@@ -67,7 +125,7 @@ async function findMember(name) {
 async function getMemberByDiscordId(discordId) {
   const { rows } = await db.query(
     `SELECT id, first_name, last_name, subteam, discord_id,
-            (pin_hash IS NOT NULL) AS has_pin
+            (pin_hash IS NOT NULL) AS has_pin, is_dryrun
        FROM members
       WHERE discord_id = $1
       LIMIT 1`,
@@ -257,7 +315,7 @@ async function allAttendance() {
     `SELECT a.ts, m.first_name, m.last_name, a.code, a.source
        FROM attendance a
        JOIN members m ON m.id = a.member_id
-      WHERE a.is_test = false
+      WHERE a.is_test = false AND a.source <> 'dryrun'
       ORDER BY a.ts`
   );
   return rows.map((row) => ({
@@ -317,6 +375,7 @@ async function memberStatusRows() {
     `SELECT first_name, last_name, subteam, discord_id,
             (pin_hash IS NOT NULL) AS has_pin
        FROM members
+      WHERE is_dryrun = false
       ORDER BY lower(first_name), lower(last_name)`
   );
   return rows.map((row) => ({
@@ -567,9 +626,96 @@ async function stats() {
   };
 }
 
+async function createDryrun(count = 20) {
+  const total = Math.max(1, Math.min(50, Number(count) || 20));
+  const firstNames = [
+    "Ava", "Liam", "Noah", "Emma", "Mason", "Sophia", "Ethan", "Isabella",
+    "Lucas", "Mia", "Oliver", "Amelia", "Elijah", "Harper", "James",
+    "Evelyn", "Benjamin", "Abigail", "Henry", "Ella", "Jack", "Scarlett",
+    "Daniel", "Grace", "Michael", "Chloe", "William", "Zoey", "Owen", "Lily",
+  ];
+  const lastNames = [
+    "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller",
+    "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez",
+    "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin",
+    "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark",
+    "Ramirez", "Lewis", "Robinson",
+  ];
+  const subteams = ["CAD", "Mechanical", "Operations", "Software", "Strategy & Drive"];
+  const today = localDate();
+  const meetingStart = zonedTimeToUtc(today, "15:30");
+  const meetingEnd = zonedTimeToUtc(today, "17:30");
+  const client = await db.pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existing = await client.query(
+      `SELECT lower(first_name || ' ' || last_name) AS name FROM members`
+    );
+    const used = new Set(existing.rows.map((row) => row.name));
+    let created = 0;
+
+    for (let i = 0; i < total; i += 1) {
+      let firstName;
+      let lastName;
+      let key;
+      let attempts = 0;
+      do {
+        firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+        lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+        key = `${firstName} ${lastName}`.toLowerCase();
+        attempts += 1;
+      } while (used.has(key) && attempts < 200);
+      used.add(key);
+
+      const subteam = subteams[Math.floor(Math.random() * subteams.length)];
+      const member = await client.query(
+        `INSERT INTO members (first_name, last_name, subteam, is_dryrun)
+         VALUES ($1, $2, $3, true)
+         RETURNING id`,
+        [firstName, lastName, subteam]
+      );
+
+      const gone = Math.random() < 0.7;
+      let ts;
+      let leftAt;
+      if (gone) {
+        const startOffset = Math.floor(Math.random() * 30);
+        const endOffset = Math.floor(Math.random() * 20);
+        ts = new Date(meetingStart.getTime() + startOffset * 60000);
+        leftAt = new Date(meetingEnd.getTime() - endOffset * 60000);
+      } else {
+        const minutesAgo = 15 + Math.floor(Math.random() * 75);
+        ts = new Date(Date.now() - minutesAgo * 60000);
+        leftAt = null;
+      }
+
+      await client.query(
+        `INSERT INTO attendance (member_id, ts, practice_date, source, code, is_test, left_at)
+         VALUES ($1, $2, $3, 'dryrun', '', false, $4)`,
+        [member.rows[0].id, ts, today, leftAt]
+      );
+      created += 1;
+    }
+
+    await client.query("COMMIT");
+    return { created, signedIn: created };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function clearDryrun() {
+  const result = await db.query(`DELETE FROM members WHERE is_dryrun = true`);
+  return result.rowCount;
+}
+
 module.exports = {
   listMembers,
   addMember,
+  registerMember,
   findMember,
   getMemberByDiscordId,
   linkMember,
@@ -585,6 +731,8 @@ module.exports = {
   allAttendance,
   memberStatusRows,
   attendanceForExport,
+  createDryrun,
+  clearDryrun,
   stats,
   localDate,
 };

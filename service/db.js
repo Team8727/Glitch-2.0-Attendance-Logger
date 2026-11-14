@@ -24,9 +24,12 @@ async function init() {
       discord_id TEXT UNIQUE,
       pin_salt TEXT,
       pin_hash TEXT,
+      is_dryrun BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    ALTER TABLE members ADD COLUMN IF NOT EXISTS is_dryrun BOOLEAN NOT NULL DEFAULT false;
 
     CREATE UNIQUE INDEX IF NOT EXISTS members_name_unique
       ON members (lower(first_name), lower(last_name));

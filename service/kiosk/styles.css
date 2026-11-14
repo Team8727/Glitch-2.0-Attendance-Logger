@@ -62,3 +62,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   color: #b9dcff;
   font-size: 0.9rem;
 }
+
+h2 { margin: 20px 0 6px; font-size: 1.15rem; }
+
+.link-button {
+  margin-top: 18px;
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.secondary {
+  margin-top: 8px;
+  background: #1a2430;
+  border-color: var(--border);
+}

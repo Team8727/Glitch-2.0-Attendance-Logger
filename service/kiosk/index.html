@@ -30,7 +30,7 @@
           <select id="subteam">
             <option value="">Select your subteam</option>
             <option>CAD</option>
-            <option>Fabrication</option>
+            <option>Mechanical</option>
             <option>Operations</option>
             <option>Software</option>
             <option>Strategy &amp; Drive</option>
@@ -43,6 +43,35 @@
 
         <button type="submit" id="submit-button">Sign in</button>
         <p id="status" class="status" role="status"></p>
+      </form>
+
+      <button type="button" id="show-register" class="link-button">
+        New member? Register — no Discord needed
+      </button>
+
+      <form id="register-form" class="hidden">
+        <h2>Register</h2>
+        <p class="muted">Create your sign-in account. You can link Discord later.</p>
+        <label for="reg-first">First name</label>
+        <input id="reg-first" autocomplete="given-name" required />
+        <label for="reg-last">Last name</label>
+        <input id="reg-last" autocomplete="family-name" required />
+        <label for="reg-subteam">Subteam</label>
+        <select id="reg-subteam" required>
+          <option value="">Select your subteam</option>
+          <option>CAD</option>
+          <option>Mechanical</option>
+          <option>Operations</option>
+          <option>Software</option>
+          <option>Strategy &amp; Drive</option>
+        </select>
+        <label for="reg-pin">PIN</label>
+        <input id="reg-pin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="off" required />
+        <label for="reg-confirm">Confirm PIN</label>
+        <input id="reg-confirm" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="off" required />
+        <button type="submit">Create account</button>
+        <button type="button" id="cancel-register" class="secondary">Back to sign in</button>
+        <p id="register-status" class="status" role="status"></p>
       </form>
     </main>
     <script src="/kiosk/app.js"></script>

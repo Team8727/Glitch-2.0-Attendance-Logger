@@ -12,6 +12,15 @@
   const confirmPinInput = document.getElementById("confirm-pin");
   const submitButton = document.getElementById("submit-button");
   const statusEl = document.getElementById("status");
+  const showRegister = document.getElementById("show-register");
+  const registerForm = document.getElementById("register-form");
+  const regFirst = document.getElementById("reg-first");
+  const regLast = document.getElementById("reg-last");
+  const regSubteam = document.getElementById("reg-subteam");
+  const regPin = document.getElementById("reg-pin");
+  const regConfirm = document.getElementById("reg-confirm");
+  const registerStatus = document.getElementById("register-status");
+  const cancelRegister = document.getElementById("cancel-register");
   const params = new URLSearchParams(window.location.search);
   const token = params.get("token") || "";
   const testMode = params.get("test") === "1";
@@ -22,6 +31,23 @@
   function setStatus(text, kind) {
     statusEl.textContent = text;
     statusEl.className = "status" + (kind ? " " + kind : "");
+  }
+
+  function setRegisterStatus(text, kind) {
+    registerStatus.textContent = text;
+    registerStatus.className = "status" + (kind ? " " + kind : "");
+  }
+
+  function showRegisterForm() {
+    form.classList.add("hidden");
+    registerForm.classList.remove("hidden");
+    showRegister.classList.add("hidden");
+  }
+
+  function hideRegisterForm() {
+    registerForm.classList.add("hidden");
+    form.classList.remove("hidden");
+    showRegister.classList.remove("hidden");
   }
 
   function selectedMember() {
@@ -132,6 +158,51 @@
       setStatus(err.message, "err");
     } finally {
       submitButton.disabled = false;
+    }
+  });
+
+  showRegister.addEventListener("click", showRegisterForm);
+  cancelRegister.addEventListener("click", hideRegisterForm);
+
+  registerForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const firstName = regFirst.value.trim();
+    const lastName = regLast.value.trim();
+    const subteam = regSubteam.value;
+    const pin = regPin.value.trim();
+    const confirm = regConfirm.value.trim();
+    if (!firstName || !lastName) return setRegisterStatus("Enter your first and last name.", "err");
+    if (!subteam) return setRegisterStatus("Select your subteam.", "err");
+    if (!/^\d{4,6}$/.test(pin)) return setRegisterStatus("Choose a 4–6 digit PIN.", "err");
+    if (pin !== confirm) return setRegisterStatus("The PINs don't match.", "err");
+
+    const button = registerForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    setRegisterStatus("Creating account…");
+    try {
+      const response = await fetch("/api/kiosk/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, firstName, lastName, subteam, pin, test: testMode }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.message || data.error || "Registration failed.");
+      }
+      await loadRoster();
+      nameSelect.value = data.name;
+      updatePinFields();
+      regFirst.value = "";
+      regLast.value = "";
+      regSubteam.value = "";
+      regPin.value = "";
+      regConfirm.value = "";
+      hideRegisterForm();
+      setStatus(`Registered as ${data.name}. Enter the code to sign in.`, "ok");
+    } catch (err) {
+      setRegisterStatus(err.message, "err");
+    } finally {
+      button.disabled = false;
     }
   });
 
