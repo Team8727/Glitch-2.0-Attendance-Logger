@@ -630,6 +630,15 @@ async function handleSignIn(req, res) {
   return sendJson(res, 200, { ok: true, name: result.name || linkedName }, false);
 }
 
+async function handleMentorSyncRoster(req, res) {
+  if (!requireBot(req, res)) return;
+  const result = await sheetSync.syncRoster();
+  if (!result.ok) {
+    return sendJson(res, 502, { ok: false, error: result.error }, false);
+  }
+  return sendJson(res, 200, result, false);
+}
+
 async function handleMentorResetPin(req, res) {
   if (!requireBot(req, res)) return;
   let body;
@@ -701,6 +710,10 @@ async function handler(req, res) {
 
   if (req.method === "POST" && pathname === "/api/mentor/reset-pin") {
     return handleMentorResetPin(req, res);
+  }
+
+  if (req.method === "POST" && pathname === "/api/mentor/sync-roster") {
+    return handleMentorSyncRoster(req, res);
   }
 
   if (req.method === "GET" && pathname === "/api/state") {

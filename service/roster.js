@@ -13,6 +13,7 @@ const fs = require("fs");
 const path = require("path");
 
 const DEFAULT_FILE = path.join(__dirname, "..", "data", "roster.csv");
+const DEFAULT_SHEET_FILE = path.join(__dirname, "data", "roster-sheet.json");
 
 function rosterFile() {
   return process.env.ROSTER_CSV || DEFAULT_FILE;
@@ -33,6 +34,37 @@ function parseRows(text) {
 }
 
 function load() {
+  const sheetFile = process.env.ROSTER_JSON || DEFAULT_SHEET_FILE;
+  try {
+    const data = JSON.parse(fs.readFileSync(sheetFile, "utf8"));
+    if (Array.isArray(data) && data.length > 0) {
+      const members = [];
+      const seen = new Set();
+      for (const row of data) {
+        const name = String((row && row.name) || "").trim();
+        if (!name) continue;
+        const key = name.toLowerCase();
+        if (seen.has(key)) {
+          console.warn(`[roster] duplicate name skipped: ${name}`);
+          continue;
+        }
+        seen.add(key);
+        members.push({
+          name,
+          subteam: String((row && row.subteam) || "").trim(),
+          studentId: String((row && row.studentId) || "").trim(),
+          role: String((row && row.role) || "").trim(),
+          email: String((row && row.email) || "").trim(),
+        });
+      }
+      if (members.length > 0) return members;
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.error("[roster] could not read sheet roster cache:", err.message);
+    }
+  }
+
   const file = rosterFile();
   let text;
   try {

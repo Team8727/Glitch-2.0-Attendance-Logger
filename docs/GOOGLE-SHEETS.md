@@ -7,12 +7,28 @@ retried.
 
 ## 1. Create the sheet
 
-Create a Google Sheet. The script will create a `Sign-ins` tab with these columns:
+Create a Google Sheet. The script will create two tabs:
+
+**Sign-ins**
 
 | Timestamp | Name | Code | Source |
 |---|---|---|---|
 
 `Source` is `discord`, `kiosk`, or `mentor`.
+
+**Roster**
+
+| Name | Subteam | Student ID | Role | Email | PIN Set | Discord Linked | Discord ID |
+|---|---|---|---|---|---|---|---|
+
+Fill in the roster in the `Roster` tab. After the service is connected, a mentor
+can click **Sync roster from Sheets** on the dashboard. That:
+
+1. Reads the `Roster` tab into the attendance service
+2. Writes `PIN Set`, `Discord Linked`, and `Discord ID` back to the sheet
+
+The sheet becomes the roster source after the first sync. `data/roster.csv` is
+only a fallback if the sheet roster cache does not exist yet.
 
 ## 2. Add the Apps Script
 
@@ -61,8 +77,11 @@ journalctl --user -u glitch-attendance -f | grep sheets
 
 ## 5. Test
 
-Sign in through Discord, the kiosk, or mentor force sign-in. Within one sync
-interval (60s) the row should appear in the `Sign-ins` tab.
+1. Open the dashboard → **Mentor force sign-in** → **Sync roster from Sheets**.
+2. Confirm the roster names appear in the dropdown and the `Roster` tab gets
+   `PIN Set` / `Discord Linked` / `Discord ID` filled in.
+3. Sign in through Discord, the kiosk, or mentor force sign-in.
+4. Within one sync interval (60s) the row should appear in the `Sign-ins` tab.
 
 ## Notes
 

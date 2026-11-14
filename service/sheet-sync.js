@@ -3,19 +3,24 @@
 /*
  * Background Google Sheets sync.
  *
- * The attendance service owns the JSON data. This module appends new rows to a
- * Google Sheet through an Apps Script webhook. It never blocks sign-ins: if the
- * webhook is down, the rows stay in signins.json and are retried next interval.
+ * - Appends new sign-ins to the Sign-ins tab.
+ * - Pulls the Roster tab into service/data/roster-sheet.json on demand.
+ * - Writes PIN/Discord status back to the Roster tab.
  *
- * The Apps Script side dedupes by timestamp + name, so retries are safe.
+ * The service never blocks sign-ins on Sheets. If the webhook is down, rows stay
+ * in signins.json and are retried next interval. The Apps Script dedupes.
  */
 
 const fs = require("fs");
 const path = require("path");
 
 const attendance = require("./attendance");
+const roster = require("./roster");
+const pins = require("./pins");
+const store = require("./store");
 
 const DEFAULT_STATE_FILE = path.join(__dirname, "data", "sheet-sync.json");
+const DEFAULT_ROSTER_FILE = path.join(__dirname, "data", "roster-sheet.json");
 const DEFAULT_INTERVAL_MS = 60000;
 
 let timer = null;
@@ -23,9 +28,16 @@ let running = false;
 let lastSync = null;
 let lastError = null;
 let lastAppended = 0;
+let lastRosterSync = null;
+let lastRosterError = null;
+let lastRosterCount = 0;
 
 function stateFile() {
   return process.env.SHEETS_SYNC_STATE_FILE || DEFAULT_STATE_FILE;
+}
+
+function rosterFile() {
+  return process.env.ROSTER_JSON || DEFAULT_ROSTER_FILE;
 }
 
 function loadState() {
@@ -51,6 +63,17 @@ function saveState(state) {
   }
 }
 
+function saveRoster(rows) {
+  try {
+    fs.mkdirSync(path.dirname(rosterFile()), { recursive: true });
+    const tmp = rosterFile() + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(rows, null, 2));
+    fs.renameSync(tmp, rosterFile());
+  } catch (err) {
+    console.error("[sheets] could not save roster cache:", err.message);
+  }
+}
+
 function pendingRows() {
   const rows = attendance.all();
   const state = loadState();
@@ -61,10 +84,44 @@ function pendingRows() {
   return index === -1 ? rows : rows.slice(index + 1);
 }
 
-async function syncOnce() {
+async function callWebhook(payload) {
   const url = process.env.SHEETS_WEBHOOK_URL;
   const secret = process.env.SHEETS_WEBHOOK_SECRET;
-  if (!url || !secret) return { ok: true, skipped: true, appended: 0 };
+  if (!url || !secret) throw new Error("Sheets webhook is not configured.");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret, ...payload }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (err) {
+    data = null;
+  }
+  if (!response.ok || !data || data.ok !== true) {
+    throw new Error(
+      (data && (data.error || data.message)) || `Sheets webhook returned HTTP ${response.status}.`
+    );
+  }
+  return data;
+}
+
+async function syncOnce() {
+  if (!process.env.SHEETS_WEBHOOK_URL || !process.env.SHEETS_WEBHOOK_SECRET) {
+    return { ok: true, skipped: true, appended: 0 };
+  }
   if (running) return { ok: true, skipped: true, appended: 0 };
 
   running = true;
@@ -76,33 +133,7 @@ async function syncOnce() {
       return { ok: true, appended: 0 };
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    let response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret, rows }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    const text = await response.text();
-    let data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch (err) {
-      data = null;
-    }
-    if (!response.ok || !data || data.ok !== true) {
-      throw new Error(
-        (data && (data.error || data.message)) || `Sheets webhook returned HTTP ${response.status}.`
-      );
-    }
-
+    const data = await callWebhook({ action: "syncSignins", rows });
     const last = rows[rows.length - 1];
     saveState({ lastTs: last.ts, lastName: last.name });
     lastSync = new Date().toISOString();
@@ -116,6 +147,49 @@ async function syncOnce() {
     return { ok: false, error: lastError };
   } finally {
     running = false;
+  }
+}
+
+async function fetchRoster() {
+  const data = await callWebhook({ action: "getRoster" });
+  if (!Array.isArray(data.roster)) {
+    throw new Error(
+      "Sheets webhook did not return a roster. Update the Apps Script deployment to the latest Code.gs."
+    );
+  }
+  const rows = data.roster;
+  saveRoster(rows);
+  lastRosterSync = new Date().toISOString();
+  lastRosterError = null;
+  lastRosterCount = rows.length;
+  console.log(`[sheets] roster synced — ${rows.length} member(s)`);
+  return rows;
+}
+
+async function pushRosterStatus() {
+  const members = roster.load();
+  const links = store.all();
+  const byName = new Map(
+    Object.entries(links).map(([id, name]) => [String(name).trim().toLowerCase(), id])
+  );
+  const rows = members.map((member) => ({
+    name: member.name,
+    hasPin: pins.has(member.name),
+    discordId: byName.get(member.name.toLowerCase()) || "",
+  }));
+  const data = await callWebhook({ action: "updateRosterStatus", rows });
+  return data;
+}
+
+async function syncRoster() {
+  try {
+    const rows = await fetchRoster();
+    const result = await pushRosterStatus();
+    return { ok: true, rosterCount: rows.length, updated: Number(result.updated) || 0 };
+  } catch (err) {
+    lastRosterError = err.name === "AbortError" ? "Sheets webhook timed out." : err.message;
+    console.error("[sheets] roster sync failed:", lastRosterError);
+    return { ok: false, error: lastRosterError };
   }
 }
 
@@ -149,7 +223,10 @@ function status() {
     lastSync,
     lastError,
     lastAppended,
+    lastRosterSync,
+    lastRosterError,
+    lastRosterCount,
   };
 }
 
-module.exports = { start, stop, syncOnce, status };
+module.exports = { start, stop, syncOnce, syncRoster, status };
