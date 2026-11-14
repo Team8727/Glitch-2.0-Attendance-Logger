@@ -42,6 +42,7 @@ async function init() {
     );
 
     ALTER TABLE attendance ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ;
+    ALTER TABLE attendance ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;
 
     CREATE INDEX IF NOT EXISTS attendance_date_idx ON attendance (practice_date);
     CREATE INDEX IF NOT EXISTS attendance_ts_idx ON attendance (ts);

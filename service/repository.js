@@ -145,7 +145,7 @@ async function resetPin(name) {
   );
 }
 
-async function signIn(name, code, source) {
+async function signIn(name, code, source, { test = false } = {}) {
   const member = await findMember(name);
   if (!member) return { ok: false, error: "not_on_roster" };
   const practiceDate = localDate();
@@ -160,9 +160,9 @@ async function signIn(name, code, source) {
     if (existing.rows[0].left_at) {
       await db.query(
         `UPDATE attendance
-            SET ts = now(), left_at = NULL, source = $1, code = $2
-          WHERE id = $3`,
-        [String(source || ""), String(code || ""), existing.rows[0].id]
+            SET ts = now(), left_at = NULL, source = $1, code = $2, is_test = $3
+          WHERE id = $4`,
+        [String(source || ""), String(code || ""), Boolean(test), existing.rows[0].id]
       );
       return { ok: true, name: member.name, rejoined: true };
     }
@@ -171,9 +171,9 @@ async function signIn(name, code, source) {
 
   try {
     await db.query(
-      `INSERT INTO attendance (member_id, ts, practice_date, source, code)
-       VALUES ($1, now(), $2, $3, $4)`,
-      [member.id, practiceDate, String(source || ""), String(code || "")]
+      `INSERT INTO attendance (member_id, ts, practice_date, source, code, is_test)
+       VALUES ($1, now(), $2, $3, $4, $5)`,
+      [member.id, practiceDate, String(source || ""), String(code || ""), Boolean(test)]
     );
     return { ok: true, name: member.name };
   } catch (err) {
@@ -208,7 +208,7 @@ async function signOut(name) {
 async function todayList() {
   const date = localDate();
   const { rows } = await db.query(
-    `SELECT m.first_name, m.last_name, m.subteam, a.ts, a.left_at,
+    `SELECT m.first_name, m.last_name, m.subteam, a.ts, a.left_at, a.is_test,
             to_char(a.ts AT TIME ZONE $2, 'HH24:MI') AS at,
             to_char(a.left_at AT TIME ZONE $2, 'HH24:MI') AS left_at_time
        FROM attendance a
@@ -227,6 +227,7 @@ async function todayList() {
       ts: row.ts.toISOString(),
       leftAt: row.left_at ? row.left_at.toISOString() : null,
       leftAtTime: row.left_at_time || null,
+      isTest: Boolean(row.is_test),
     })),
   };
 }
@@ -237,11 +238,12 @@ async function seasonStats() {
       `SELECT m.first_name, m.last_name, count(*)::int AS count
          FROM attendance a
          JOIN members m ON m.id = a.member_id
+        WHERE a.is_test = false
         GROUP BY m.id, m.first_name, m.last_name
         ORDER BY count DESC, lower(m.first_name), lower(m.last_name)`
     ),
-    db.query(`SELECT count(DISTINCT practice_date)::int AS count FROM attendance`),
-    db.query(`SELECT count(*)::int AS count FROM attendance`),
+    db.query(`SELECT count(DISTINCT practice_date)::int AS count FROM attendance WHERE is_test = false`),
+    db.query(`SELECT count(*)::int AS count FROM attendance WHERE is_test = false`),
   ]);
   return {
     practices: practices.rows[0].count,
@@ -255,6 +257,7 @@ async function allAttendance() {
     `SELECT a.ts, m.first_name, m.last_name, a.code, a.source
        FROM attendance a
        JOIN members m ON m.id = a.member_id
+      WHERE a.is_test = false
       ORDER BY a.ts`
   );
   return rows.map((row) => ({
@@ -282,6 +285,75 @@ async function memberStatusRows() {
   }));
 }
 
+async function stats() {
+  const sessions = `
+    WITH sessions AS (
+      SELECT m.id, m.first_name, m.last_name, m.subteam,
+             GREATEST(
+               0,
+               EXTRACT(EPOCH FROM (
+                 LEAST(COALESCE(a.left_at, now()), a.ts + interval '2 hours') - a.ts
+               )) / 3600.0
+             ) AS hours
+        FROM attendance a
+        JOIN members m ON m.id = a.member_id
+       WHERE a.is_test = false
+    )
+  `;
+
+  const [subteams, members, totals] = await Promise.all([
+    db.query(
+      `${sessions}
+       SELECT COALESCE(NULLIF(subteam, ''), 'Unknown') AS subteam,
+              SUM(hours)::float AS hours,
+              COUNT(*)::int AS sessions,
+              COUNT(DISTINCT id)::int AS members
+         FROM sessions
+        GROUP BY 1
+        ORDER BY hours DESC`
+    ),
+    db.query(
+      `${sessions}
+       SELECT first_name, last_name, subteam,
+              SUM(hours)::float AS hours,
+              COUNT(*)::int AS sessions
+         FROM sessions
+        GROUP BY id, first_name, last_name, subteam
+        ORDER BY hours DESC, lower(first_name), lower(last_name)`
+    ),
+    db.query(
+      `SELECT COALESCE(SUM(
+                GREATEST(
+                  0,
+                  EXTRACT(EPOCH FROM (
+                    LEAST(COALESCE(left_at, now()), ts + interval '2 hours') - ts
+                  )) / 3600.0
+                )
+              ), 0)::float AS hours,
+              COUNT(*)::int AS sessions,
+              COUNT(DISTINCT practice_date)::int AS practices
+         FROM attendance
+        WHERE is_test = false`
+    ),
+  ]);
+
+  return {
+    totals: totals.rows[0],
+    subteams: subteams.rows.map((row) => ({
+      subteam: row.subteam,
+      hours: Number(row.hours),
+      sessions: row.sessions,
+      members: row.members,
+    })),
+    members: members.rows.map((row) => ({
+      name: fullName(row),
+      subteam: row.subteam || "",
+      hours: Number(row.hours),
+      sessions: row.sessions,
+    })),
+  };
+}
+
 module.exports = {
   listMembers,
   addMember,
@@ -299,5 +371,6 @@ module.exports = {
   seasonStats,
   allAttendance,
   memberStatusRows,
+  stats,
   localDate,
 };

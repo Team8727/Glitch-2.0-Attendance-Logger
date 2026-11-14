@@ -252,7 +252,7 @@ async function handleKioskSetPin(req, res) {
   await repo.setSubteam(match.name, subteam);
   await repo.setPin(match.name, pin);
   pushSheetStatus();
-  const result = await repo.signIn(match.name, code, "kiosk");
+  const result = await repo.signIn(match.name, code, "kiosk", { test: false });
   if (result && result.already) {
     return sendJson(res, 200, { ok: true, name: match.name, already: true }, false);
   }
@@ -276,6 +276,16 @@ async function handleMentorRoster(req, res) {
   try {
     const members = await repo.listMembers();
     return sendJson(res, 200, { ok: true, members }, false);
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+}
+
+async function handleStats(req, res) {
+  if (!requireBot(req, res)) return;
+  try {
+    const data = await repo.stats();
+    return sendJson(res, 200, { ok: true, ...data }, false);
   } catch (err) {
     return sendError(res, 500, err.message, false);
   }
@@ -412,7 +422,7 @@ async function handleMentorSignIn(req, res) {
     );
   }
 
-  const result = await repo.signIn(match.name, "mentor", "mentor");
+  const result = await repo.signIn(match.name, "mentor", "mentor", { test: false });
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -538,7 +548,7 @@ async function handleKioskSignIn(req, res) {
     );
   }
 
-  const result = await repo.signIn(match.name, code, "kiosk");
+  const result = await repo.signIn(match.name, code, "kiosk", { test: false });
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -731,7 +741,7 @@ async function handleSignIn(req, res) {
     );
   }
 
-  const result = await repo.signIn(linkedName, code, "discord");
+  const result = await repo.signIn(linkedName, code, "discord", { test: Boolean(body.test) });
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -854,6 +864,10 @@ async function handler(req, res) {
 
   if (req.method === "GET" && pathname === "/api/attendance/today") {
     return handleAttendanceToday(req, res);
+  }
+
+  if (req.method === "GET" && pathname === "/api/stats") {
+    return handleStats(req, res);
   }
 
   if (req.method === "POST" && pathname === "/api/signout") {
