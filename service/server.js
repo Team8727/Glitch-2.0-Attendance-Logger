@@ -171,6 +171,7 @@ async function handleKioskSetPin(req, res) {
   const code = String(body.code || "").trim();
   const pin = String(body.pin || "").trim();
   const subteam = String(body.subteam || "").trim();
+  const test = Boolean(body.test);
   if (!name) return sendError(res, 400, "Select your name.", false);
   if (!subteam) {
     return sendJson(
@@ -257,7 +258,7 @@ async function handleKioskSetPin(req, res) {
   await repo.setSubteam(match.name, subteam);
   await repo.setPin(match.name, pin);
   pushSheetStatus();
-  const result = await repo.signIn(match.name, code, "kiosk", { test: false });
+  const result = await repo.signIn(match.name, code, "kiosk", { test });
   if (result && result.already) {
     return sendJson(res, 200, { ok: true, name: match.name, already: true }, false);
   }
@@ -467,6 +468,7 @@ async function handleKioskSignIn(req, res) {
 
   const name = String(body.name || "").trim();
   const code = String(body.code || "").trim();
+  const test = Boolean(body.test);
   if (!name) return sendError(res, 400, "Select your name.", false);
   if (!/^\d{4}$/.test(code)) {
     return sendJson(
@@ -553,7 +555,7 @@ async function handleKioskSignIn(req, res) {
     );
   }
 
-  const result = await repo.signIn(match.name, code, "kiosk", { test: false });
+  const result = await repo.signIn(match.name, code, "kiosk", { test });
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(

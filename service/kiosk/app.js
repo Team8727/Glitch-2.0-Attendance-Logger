@@ -12,7 +12,10 @@
   const confirmPinInput = document.getElementById("confirm-pin");
   const submitButton = document.getElementById("submit-button");
   const statusEl = document.getElementById("status");
-  const token = new URLSearchParams(window.location.search).get("token") || "";
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("token") || "";
+  const testMode = params.get("test") === "1";
+  if (testMode) document.title = "Glitch 2.0 Sign-In (TEST)";
 
   let members = [];
 
@@ -84,7 +87,7 @@
     if (!/^\d{4}$/.test(code)) return setStatus("Enter the 4-digit code from the display.", "err");
 
     let endpoint = "/api/kiosk/signin";
-    let body = { token, name: member.name, code };
+    let body = { token, name: member.name, code, test: testMode };
 
     if (member.hasPin) {
       const pin = pinInput.value.trim();
