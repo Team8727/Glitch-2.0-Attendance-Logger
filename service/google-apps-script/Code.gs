@@ -127,29 +127,47 @@ function getRoster() {
 function updateRosterStatus(rows) {
   const sheet = getRosterSheet();
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return json({ ok: true, updated: 0 });
+  const values =
+    lastRow >= 2
+      ? sheet.getRange(2, 1, lastRow - 1, ROSTER_HEADERS.length).getValues()
+      : [];
 
   const byName = new Map();
-  for (const row of rows) {
-    if (row && row.name) byName.set(String(row.name).trim().toLowerCase(), row);
+  for (let i = 0; i < values.length; i += 1) {
+    const name = `${String(values[i][0] || '').trim()} ${String(values[i][1] || '').trim()}`.trim();
+    if (name) byName.set(name.toLowerCase(), i);
   }
 
-  const range = sheet.getRange(2, 1, lastRow - 1, ROSTER_HEADERS.length);
-  const values = range.getValues();
   let updated = 0;
-  for (const row of values) {
-    const name = `${String(row[0] || '').trim()} ${String(row[1] || '').trim()}`.trim();
-    if (!name) continue;
-    const status = byName.get(name.toLowerCase());
-    if (!status) continue;
-    row[2] = status.subteam || row[2] || '';
-    row[3] = status.hasPin ? 'Yes' : 'No';
-    row[4] = status.discordId ? 'Yes' : 'No';
-    row[5] = status.discordId || '';
-    updated += 1;
+  let appended = 0;
+  for (const status of rows) {
+    if (!status || !status.name) continue;
+    const key = String(status.name).trim().toLowerCase();
+    const parts = String(status.name).trim().split(/\s+/);
+    const firstName = status.firstName || parts[0] || '';
+    const lastName = status.lastName || parts.slice(1).join(' ') || '';
+    const row = [
+      firstName,
+      lastName,
+      status.subteam || '',
+      status.hasPin ? 'Yes' : 'No',
+      status.discordId ? 'Yes' : 'No',
+      status.discordId || '',
+    ];
+    if (byName.has(key)) {
+      values[byName.get(key)] = row;
+      updated += 1;
+    } else {
+      values.push(row);
+      byName.set(key, values.length - 1);
+      appended += 1;
+    }
   }
-  range.setValues(values);
-  return json({ ok: true, updated });
+
+  if (values.length > 0) {
+    sheet.getRange(2, 1, values.length, ROSTER_HEADERS.length).setValues(values);
+  }
+  return json({ ok: true, updated, appended });
 }
 
 function getRosterSheet() {

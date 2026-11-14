@@ -225,6 +225,8 @@ async function memberStatusRows() {
   );
   return rows.map((row) => ({
     name: fullName(row),
+    firstName: row.first_name || "",
+    lastName: row.last_name || "",
     subteam: row.subteam || "",
     hasPin: Boolean(row.has_pin),
     discordId: row.discord_id || "",

@@ -17,8 +17,7 @@ mentors. The service pushes data to Sheets; it never reads roster data back.
 | First Name | Last Name | Subteam | PIN Set | Discord Linked | Discord ID |
 |---|---|---|---|---|---|
 
-The service fills `Subteam`, `PIN Set`, `Discord Linked`, and `Discord ID`.
-Mentors only need to read this tab.
+The service generates this entire tab from Postgres. Mentors only need to read it.
 
 ## 1. Create the sheet
 
