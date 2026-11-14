@@ -19,16 +19,16 @@ async function runOnce() {
   const tz = process.env.TZ || DEFAULT_TZ;
   const result = await db.query(
     `UPDATE attendance
-        SET left_at = (practice_date + time '17:30') AT TIME ZONE $1
+        SET left_at = (practice_date + time '17:59') AT TIME ZONE $1
       WHERE left_at IS NULL
         AND is_test = false
         AND practice_date = (now() AT TIME ZONE $1)::date
         AND EXTRACT(ISODOW FROM practice_date) IN (2, 4)
-        AND (now() AT TIME ZONE $1)::time >= time '17:45'`,
+        AND (now() AT TIME ZONE $1)::time >= time '18:15'`,
     [tz]
   );
   if (result.rowCount > 0) {
-    console.log(`[auto-signout] signed out ${result.rowCount} member(s) at 17:30`);
+    console.log(`[auto-signout] signed out ${result.rowCount} member(s) at 17:59`);
   }
   return result.rowCount;
 }

@@ -3,6 +3,8 @@
 const MEETING_TZ = process.env.TZ || "America/New_York";
 const MEETING_START = "15:30";
 const MEETING_END = "17:30";
+const SIGNIN_START = "14:59";
+const SIGNIN_END = "17:59";
 const MEETINGS_END_DATE = process.env.MEETINGS_END_DATE || "2027-01-09";
 
 const NO_SCHOOL_DATES = new Set([
@@ -54,8 +56,8 @@ function meetingStatus(now = new Date()) {
     isMeetingDay &&
     !NO_SCHOOL_DATES.has(dateStr) &&
     dateStr <= MEETINGS_END_DATE &&
-    minutes >= 15 * 60 + 30 &&
-    minutes <= 17 * 60 + 30;
+    minutes >= 14 * 60 + 59 &&
+    minutes <= 17 * 60 + 59;
   return { inSession, dateStr, weekday, minutes };
 }
 
@@ -63,6 +65,8 @@ module.exports = {
   MEETING_TZ,
   MEETING_START,
   MEETING_END,
+  SIGNIN_START,
+  SIGNIN_END,
   MEETINGS_END_DATE,
   NO_SCHOOL_DATES,
   dateStringInTz,

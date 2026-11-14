@@ -232,7 +232,7 @@
         submitButton.disabled = false;
       } else {
         meetingBanner.textContent =
-          "🕒 No meeting in session. Sign-ins open Tuesday & Thursday, 3:30–5:30 PM.";
+          "🕒 No meeting in session. Sign-ins open Tuesday & Thursday, 2:59–5:59 PM.";
         meetingBanner.classList.remove("hidden");
         submitButton.disabled = true;
       }
