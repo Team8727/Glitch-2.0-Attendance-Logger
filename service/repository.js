@@ -346,32 +346,87 @@ async function allAttendance() {
   }));
 }
 
-async function searchArchive(query, limit = 80) {
-  const text = String(query || "").trim();
-  if (!text) return [];
+async function searchArchive({
+  q = "",
+  keywords = [],
+  authors = [],
+  channels = [],
+  from = null,
+  to = null,
+  limit = 80,
+} = {}) {
+  const text = String(q || "").trim();
+  const baseTerms = Array.isArray(keywords) ? keywords : [];
+  const textTerms = text
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2);
   const terms = [
     ...new Set(
-      text
-        .toLowerCase()
-        .replace(/[^a-z0-9 ]/g, " ")
-        .split(/\s+/)
-        .filter((word) => word.length > 2)
+      [...baseTerms, ...textTerms]
+        .map((term) => String(term).trim().toLowerCase())
+        .filter((term) => term.length > 2)
     ),
-  ].slice(0, 8);
+  ].slice(0, 10);
   const patterns = terms.map((term) => `%${term}%`);
+  const authorPatterns = (Array.isArray(authors) ? authors : [])
+    .map((author) => String(author).trim())
+    .filter(Boolean)
+    .map((author) => `%${author}%`);
+  const channelList = (Array.isArray(channels) ? channels : [])
+    .map((channel) => String(channel).trim().replace(/^#/, "").toLowerCase())
+    .filter(Boolean);
+
+  const params = [text, patterns];
+  let index = 3;
+  const where = ["author_bot = false"];
+
+  where.push(
+    `(content ILIKE ANY($2::text[]) OR to_tsvector('english', coalesce(content, '')) @@ websearch_to_tsquery('english', $1))`
+  );
+
+  if (authorPatterns.length > 0) {
+    where.push(
+      `(author_name ILIKE ANY($${index}::text[]) OR content ILIKE ANY($${index}::text[]))`
+    );
+    params.push(authorPatterns);
+    index += 1;
+  }
+
+  if (channelList.length > 0) {
+    where.push(`lower(channel_name) = ANY($${index}::text[])`);
+    params.push(channelList);
+    index += 1;
+  }
+
+  if (from) {
+    where.push(`created_at >= $${index}`);
+    params.push(from);
+    index += 1;
+  }
+
+  if (to) {
+    where.push(`created_at <= $${index}`);
+    params.push(to);
+    index += 1;
+  }
+
+  const limitParam = `$${index}`;
+  params.push(Math.min(Math.max(Number(limit) || 80, 1), 500));
 
   try {
     const { rows } = await db.query(
-      `SELECT channel_name, author_name, created_at, content, attachments
+      `SELECT channel_name, author_name, created_at, content, attachments,
+              ts_rank(
+                to_tsvector('english', coalesce(content, '')),
+                websearch_to_tsquery('english', $1)
+              ) AS rank
          FROM discord_messages
-        WHERE author_bot = false
-          AND (
-            content ILIKE ANY($2::text[])
-            OR to_tsvector('english', coalesce(content, '')) @@ websearch_to_tsquery('english', $1)
-          )
-        ORDER BY created_at DESC
-        LIMIT $3`,
-      [text, patterns, Math.min(Math.max(Number(limit) || 80, 1), 200)]
+        WHERE ${where.join(" AND ")}
+        ORDER BY rank DESC, created_at DESC
+        LIMIT ${limitParam}`,
+      params
     );
     return rows.map((row) => ({
       channel: row.channel_name,

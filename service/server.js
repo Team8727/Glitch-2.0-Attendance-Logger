@@ -376,8 +376,21 @@ async function handleArchiveSearch(req, res) {
   const url = new URL(req.url, "http://localhost");
   const q = url.searchParams.get("q") || "";
   const limit = Number(url.searchParams.get("limit") || "80");
+  const list = (name) =>
+    (url.searchParams.get(name) || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
   try {
-    const messages = await repo.searchArchive(q, limit);
+    const messages = await repo.searchArchive({
+      q,
+      keywords: list("keywords"),
+      authors: list("authors"),
+      channels: list("channels"),
+      from: url.searchParams.get("from") || null,
+      to: url.searchParams.get("to") || null,
+      limit,
+    });
     return sendJson(res, 200, { ok: true, messages }, false);
   } catch (err) {
     return sendError(res, 500, err.message, false);
