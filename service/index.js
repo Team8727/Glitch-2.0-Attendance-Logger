@@ -14,6 +14,7 @@ const repo = require("./repository");
 const codes = require("./codes");
 const server = require("./server");
 const sheetSync = require("./sheet-sync");
+const autoSignOut = require("./auto-signout");
 
 async function main() {
   if (!process.env.BOT_API_KEY) {
@@ -36,11 +37,13 @@ async function main() {
   const httpServer = await server.start();
   codes.start();
   sheetSync.start();
+  autoSignOut.start();
 
   const shutdown = async (signal) => {
     console.log(`[shutdown] ${signal} received — stopping.`);
     codes.stop();
     sheetSync.stop();
+    autoSignOut.stop();
     httpServer.close(async () => {
       await db.close().catch(() => {});
       process.exit(0);
