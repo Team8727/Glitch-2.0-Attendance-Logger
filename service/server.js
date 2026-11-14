@@ -281,6 +281,79 @@ async function handleMentorRoster(req, res) {
   }
 }
 
+async function handleAttendanceToday(req, res) {
+  if (!requireBot(req, res)) return;
+  try {
+    const data = await repo.todayList();
+    return sendJson(res, 200, { ok: true, ...data }, false);
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+}
+
+async function handleSignOut(req, res) {
+  if (!requireBot(req, res)) return;
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (err) {
+    return sendError(res, err.status || 400, err.message, false);
+  }
+  const discordId = String(body.discordId || "").trim();
+  if (!discordId) return sendError(res, 400, "Missing discordId.", false);
+
+  const member = await repo.getMemberByDiscordId(discordId);
+  if (!member) {
+    return sendJson(
+      res,
+      409,
+      {
+        ok: false,
+        error: "not_linked",
+        message: "You're not linked yet. Run `/link <your name>` first.",
+      },
+      false
+    );
+  }
+
+  const result = await repo.signOut(member.name);
+  if (!result.ok) {
+    if (result.already) {
+      return sendJson(
+        res,
+        409,
+        {
+          ok: false,
+          already: true,
+          error: "already_signed_out",
+          message: "You're already signed out for today.",
+        },
+        false
+      );
+    }
+    if (result.error === "not_signed_in") {
+      return sendJson(
+        res,
+        409,
+        { ok: false, error: "not_signed_in", message: "You're not signed in today." },
+        false
+      );
+    }
+    return sendJson(
+      res,
+      500,
+      { ok: false, error: "signout_failed", message: "Sign-out failed — ask a mentor." },
+      false
+    );
+  }
+  return sendJson(
+    res,
+    200,
+    { ok: true, name: result.name, durationMinutes: result.durationMinutes },
+    false
+  );
+}
+
 async function handleMentorAddMember(req, res) {
   if (!requireBot(req, res)) return;
   let body;
@@ -760,6 +833,14 @@ async function handler(req, res) {
 
   if (req.method === "POST" && pathname === "/api/mentor/sync-roster") {
     return handleMentorSyncRoster(req, res);
+  }
+
+  if (req.method === "GET" && pathname === "/api/attendance/today") {
+    return handleAttendanceToday(req, res);
+  }
+
+  if (req.method === "POST" && pathname === "/api/signout") {
+    return handleSignOut(req, res);
   }
 
   if (req.method === "GET" && pathname === "/api/state") {

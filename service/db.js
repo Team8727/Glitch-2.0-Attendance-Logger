@@ -41,6 +41,8 @@ async function init() {
       UNIQUE (member_id, practice_date)
     );
 
+    ALTER TABLE attendance ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ;
+
     CREATE INDEX IF NOT EXISTS attendance_date_idx ON attendance (practice_date);
     CREATE INDEX IF NOT EXISTS attendance_ts_idx ON attendance (ts);
   `);

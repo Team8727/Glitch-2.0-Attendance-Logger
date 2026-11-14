@@ -149,6 +149,26 @@ async function signIn(name, code, source) {
   const member = await findMember(name);
   if (!member) return { ok: false, error: "not_on_roster" };
   const practiceDate = localDate();
+
+  const existing = await db.query(
+    `SELECT id, left_at FROM attendance
+      WHERE member_id = $1 AND practice_date = $2
+      LIMIT 1`,
+    [member.id, practiceDate]
+  );
+  if (existing.rowCount > 0) {
+    if (existing.rows[0].left_at) {
+      await db.query(
+        `UPDATE attendance
+            SET ts = now(), left_at = NULL, source = $1, code = $2
+          WHERE id = $3`,
+        [String(source || ""), String(code || ""), existing.rows[0].id]
+      );
+      return { ok: true, name: member.name, rejoined: true };
+    }
+    return { ok: false, already: true, error: "already signed in" };
+  }
+
   try {
     await db.query(
       `INSERT INTO attendance (member_id, ts, practice_date, source, code)
@@ -164,11 +184,33 @@ async function signIn(name, code, source) {
   }
 }
 
+async function signOut(name) {
+  const member = await findMember(name);
+  if (!member) return { ok: false, error: "not_on_roster" };
+  const practiceDate = localDate();
+  const { rows } = await db.query(
+    `SELECT id, ts, left_at FROM attendance
+      WHERE member_id = $1 AND practice_date = $2
+      LIMIT 1`,
+    [member.id, practiceDate]
+  );
+  if (rows.length === 0) return { ok: false, error: "not_signed_in" };
+  if (rows[0].left_at) return { ok: false, already: true, error: "already signed out" };
+
+  await db.query(`UPDATE attendance SET left_at = now() WHERE id = $1`, [rows[0].id]);
+  const durationMinutes = Math.max(
+    0,
+    Math.round((Date.now() - new Date(rows[0].ts).getTime()) / 60000)
+  );
+  return { ok: true, name: member.name, durationMinutes };
+}
+
 async function todayList() {
   const date = localDate();
   const { rows } = await db.query(
-    `SELECT m.first_name, m.last_name,
-            to_char(a.ts AT TIME ZONE $2, 'HH24:MI') AS at
+    `SELECT m.first_name, m.last_name, a.ts, a.left_at,
+            to_char(a.ts AT TIME ZONE $2, 'HH24:MI') AS at,
+            to_char(a.left_at AT TIME ZONE $2, 'HH24:MI') AS left_at_time
        FROM attendance a
        JOIN members m ON m.id = a.member_id
       WHERE a.practice_date = $1
@@ -178,7 +220,13 @@ async function todayList() {
   return {
     date,
     count: rows.length,
-    members: rows.map((row) => ({ name: fullName(row), at: row.at })),
+    members: rows.map((row) => ({
+      name: fullName(row),
+      at: row.at,
+      ts: row.ts.toISOString(),
+      leftAt: row.left_at ? row.left_at.toISOString() : null,
+      leftAtTime: row.left_at_time || null,
+    })),
   };
 }
 
@@ -245,6 +293,7 @@ module.exports = {
   verifyPin,
   resetPin,
   signIn,
+  signOut,
   todayList,
   seasonStats,
   allAttendance,
