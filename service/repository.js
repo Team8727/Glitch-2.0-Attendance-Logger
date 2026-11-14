@@ -2,6 +2,7 @@
 
 const crypto = require("crypto");
 const db = require("./db");
+const meetingSchedule = require("./meeting-schedule");
 
 const KEY_LENGTH = 64;
 
@@ -215,9 +216,16 @@ async function resetPin(name) {
   );
 }
 
-async function signIn(name, code, source, { test = false } = {}) {
+async function signIn(name, code, source, { test = false, allowOutsideMeeting = false } = {}) {
   const member = await findMember(name);
   if (!member) return { ok: false, error: "not_on_roster" };
+  if (!test && !allowOutsideMeeting && !meetingSchedule.meetingStatus().inSession) {
+    return {
+      ok: false,
+      error: "outside_meeting",
+      message: "Sign-ins are only open during practice (Tue/Thu 3:30–5:30 PM).",
+    };
+  }
   const practiceDate = localDate();
 
   const existing = await db.query(

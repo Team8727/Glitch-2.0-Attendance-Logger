@@ -12,6 +12,7 @@
   const confirmPinInput = document.getElementById("confirm-pin");
   const submitButton = document.getElementById("submit-button");
   const statusEl = document.getElementById("status");
+  const meetingBanner = document.getElementById("meeting-banner");
   const showRegister = document.getElementById("show-register");
   const registerForm = document.getElementById("register-form");
   const regFirst = document.getElementById("reg-first");
@@ -217,5 +218,32 @@
     }
   });
 
+  async function checkMeeting() {
+    if (testMode) {
+      meetingBanner.classList.add("hidden");
+      submitButton.disabled = false;
+      return;
+    }
+    try {
+      const response = await fetch("/api/meeting/status", { cache: "no-store" });
+      const data = await response.json();
+      if (data && data.inSession) {
+        meetingBanner.classList.add("hidden");
+        submitButton.disabled = false;
+      } else {
+        meetingBanner.textContent =
+          "🕒 No meeting in session. Sign-ins open Tuesday & Thursday, 3:30–5:30 PM.";
+        meetingBanner.classList.remove("hidden");
+        submitButton.disabled = true;
+      }
+    } catch (err) {
+      // If the status check fails, let the API enforce meeting hours.
+      meetingBanner.classList.add("hidden");
+      submitButton.disabled = false;
+    }
+  }
+
+  checkMeeting();
+  setInterval(checkMeeting, 30000);
   loadRoster();
 })();

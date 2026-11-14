@@ -25,6 +25,7 @@ const path = require("path");
 const codes = require("./codes");
 const repo = require("./repository");
 const sheetSync = require("./sheet-sync");
+const meetingSchedule = require("./meeting-schedule");
 const tba = require("./tba");
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -194,6 +195,19 @@ async function handleKioskSetPin(req, res) {
       res,
       400,
       { ok: false, error: "invalid_format", message: "Enter the 4-digit code from the display." },
+      false
+    );
+  }
+
+  if (!test && !meetingSchedule.meetingStatus().inSession) {
+    return sendJson(
+      res,
+      403,
+      {
+        ok: false,
+        error: "outside_meeting",
+        message: "Sign-ins are only open during practice (Tue/Thu 3:30–5:30 PM).",
+      },
       false
     );
   }
@@ -499,7 +513,7 @@ async function handleMentorSignIn(req, res) {
     );
   }
 
-  const result = await repo.signIn(match.name, "mentor", "mentor", { test: false });
+  const result = await repo.signIn(match.name, "mentor", "mentor", { test: false, allowOutsideMeeting: true });
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -546,6 +560,19 @@ async function handleKioskSignIn(req, res) {
       res,
       400,
       { ok: false, error: "invalid_format", message: "Enter the 4-digit code from the display." },
+      false
+    );
+  }
+
+  if (!test && !meetingSchedule.meetingStatus().inSession) {
+    return sendJson(
+      res,
+      403,
+      {
+        ok: false,
+        error: "outside_meeting",
+        message: "Sign-ins are only open during practice (Tue/Thu 3:30–5:30 PM).",
+      },
       false
     );
   }
@@ -823,6 +850,20 @@ async function handleSignIn(req, res) {
     );
   }
 
+  const test = Boolean(body.test);
+  if (!test && !meetingSchedule.meetingStatus().inSession) {
+    return sendJson(
+      res,
+      403,
+      {
+        ok: false,
+        error: "outside_meeting",
+        message: "Sign-ins are only open during practice (Tue/Thu 3:30–5:30 PM).",
+      },
+      false
+    );
+  }
+
   const member = await repo.getMemberByDiscordId(discordId);
   const linkedName = member ? member.name : null;
   if (!linkedName) {
@@ -866,7 +907,7 @@ async function handleSignIn(req, res) {
     );
   }
 
-  const result = await repo.signIn(linkedName, code, "discord", { test: Boolean(body.test) });
+  const result = await repo.signIn(linkedName, code, "discord", { test });
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -1076,6 +1117,10 @@ async function handler(req, res) {
 
   if (req.method === "POST" && pathname === "/api/signout") {
     return handleSignOut(req, res);
+  }
+
+  if (req.method === "GET" && pathname === "/api/meeting/status") {
+    return sendJson(res, 200, { ok: true, ...meetingSchedule.meetingStatus() }, true);
   }
 
   if (req.method === "GET" && pathname === "/api/state") {
