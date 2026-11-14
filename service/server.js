@@ -45,6 +45,11 @@ function sendError(res, status, error, cors) {
   sendJson(res, status, { ok: false, error }, cors);
 }
 
+function csvEscape(value) {
+  const text = String(value == null ? "" : value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -810,6 +815,55 @@ async function handleMentorResetPin(req, res) {
   return sendJson(res, 200, { ok: true, name: match.name }, false);
 }
 
+async function handleExport(req, res) {
+  if (!requireBot(req, res)) return;
+  const url = new URL(req.url, "http://localhost");
+  const range = url.searchParams.get("range") || "last-meeting";
+  if (!["last-meeting", "last-2-weeks", "all"].includes(range)) {
+    return sendError(res, 400, "Invalid export range.", false);
+  }
+
+  try {
+    const rows = await repo.attendanceForExport(range);
+    const header = [
+      "Practice Date",
+      "First Name",
+      "Last Name",
+      "Subteam",
+      "Sign In",
+      "Sign Out",
+      "Hours",
+      "Source",
+    ];
+    const lines = [header.join(",")];
+    for (const row of rows) {
+      lines.push(
+        [
+          row.practiceDate,
+          row.firstName,
+          row.lastName,
+          row.subteam,
+          row.signIn,
+          row.signOut,
+          row.hours,
+          row.source,
+        ]
+          .map(csvEscape)
+          .join(",")
+      );
+    }
+    const csv = lines.join("\n") + "\n";
+    res.writeHead(200, {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="glitch-attendance-${range}.csv"`,
+      "Cache-Control": "no-store",
+    });
+    res.end(csv);
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+}
+
 async function handler(req, res) {
   let pathname = "";
   try {
@@ -868,6 +922,10 @@ async function handler(req, res) {
 
   if (req.method === "GET" && pathname === "/api/stats") {
     return handleStats(req, res);
+  }
+
+  if (req.method === "GET" && pathname === "/api/export") {
+    return handleExport(req, res);
   }
 
   if (req.method === "POST" && pathname === "/api/signout") {

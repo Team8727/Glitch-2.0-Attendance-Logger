@@ -268,6 +268,50 @@ async function allAttendance() {
   }));
 }
 
+async function attendanceForExport(range) {
+  let where = "a.is_test = false";
+  if (range === "last-meeting") {
+    where +=
+      " AND a.practice_date = (SELECT MAX(practice_date) FROM attendance WHERE is_test = false)";
+  } else if (range === "last-2-weeks") {
+    where += " AND a.practice_date >= CURRENT_DATE - interval '14 days'";
+  }
+
+  const { rows } = await db.query(
+    `SELECT to_char(a.practice_date, 'YYYY-MM-DD') AS practice_date,
+            m.first_name, m.last_name, m.subteam,
+            to_char(a.ts AT TIME ZONE $1, 'YYYY-MM-DD HH24:MI') AS sign_in,
+            to_char(a.left_at AT TIME ZONE $1, 'YYYY-MM-DD HH24:MI') AS sign_out,
+            ROUND(
+              GREATEST(
+                0,
+                EXTRACT(EPOCH FROM (
+                  LEAST(COALESCE(a.left_at, now()), a.ts + interval '2 hours') - a.ts
+                )) / 3600.0
+              )::numeric,
+              2
+            ) AS hours,
+            a.source
+       FROM attendance a
+       JOIN members m ON m.id = a.member_id
+      WHERE ${where}
+      ORDER BY a.practice_date, a.ts`,
+    [tz()]
+  );
+
+  return rows.map((row) => ({
+    practiceDate: row.practice_date,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    name: fullName(row),
+    subteam: row.subteam || "",
+    signIn: row.sign_in || "",
+    signOut: row.sign_out || "",
+    hours: Number(row.hours),
+    source: row.source || "",
+  }));
+}
+
 async function memberStatusRows() {
   const { rows } = await db.query(
     `SELECT first_name, last_name, subteam, discord_id,
@@ -371,6 +415,7 @@ module.exports = {
   seasonStats,
   allAttendance,
   memberStatusRows,
+  attendanceForExport,
   stats,
   localDate,
 };
