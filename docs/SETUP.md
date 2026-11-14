@@ -58,7 +58,7 @@ Rules that keep everything working:
 
 - **Names unique**, no apostrophes (`O'Brien` → `OBrien`).
 - Only **Name** and **Subteam** are used by the service; the rest is documentation.
-- The service re-reads the file on **every `/link`** — new members work immediately,
+- The service re-reads the file on **every `/register`** — new members work immediately,
   and the file is version-controlled so it survives redeploys.
 
 Set `ROSTER_CSV` only if you keep the roster somewhere else.
@@ -68,7 +68,7 @@ Set `ROSTER_CSV` only if you keep the roster somewhere else.
 The service must be reachable by:
 
 - the GitHub Pages display site (public `GET /api/state`), and
-- the Discord bot (internal `POST /api/link`, `POST /api/signin`).
+- the Discord bot (internal `POST /api/register`, `POST /api/signin`).
 
 It should **not** be routed through NordVPN. Only the bot goes through the VPN.
 
@@ -172,7 +172,7 @@ Local (no Discord needed):
 
 With the bot and real secrets:
 
-- [ ] `/link <roster name>` works; a garbage name is rejected (roster CSV respected).
+- [ ] `/register` works; a bad name is rejected or creates a new roster entry as expected.
 - [ ] The display shows a 4-digit number and, under it, a real team name + City, ST.
 - [ ] The number flips every 60s; the countdown bar reaches 0 exactly at the flip.
 - [ ] `/signin` with a wrong number → rejected; with the current number → success, and
@@ -226,8 +226,8 @@ Degraded mode (optional but recommended to verify):
 
 | Method | Path | Body | Result |
 |---|---|---|---|
-| `POST` | `/api/link` | `{ "discordId": "...", "name": "..." }` | `{ ok, name, subteam }` or `{ ok:false, error }` |
-| `GET` | `/api/link/:discordId` | — | `{ ok, linked, name }` |
+| `POST` | `/api/register` | `{ "discordId": "...", "firstName": "...", "lastName": "...", "subteam": "...", "leadership": false }` | `{ ok, name, subteam, leadership }` or `{ ok:false, error }` |
+| `GET` | `/api/link/:discordId` | — | `{ ok, linked, name, firstName, lastName, leadership }` |
 | `POST` | `/api/signin` | `{ "discordId": "...", "code": "8727" }` | `{ ok, name }` or `{ ok:false, error, message }` |
 
 Send the key as `X-Bot-Key: <key>` or `Authorization: Bearer <key>`.

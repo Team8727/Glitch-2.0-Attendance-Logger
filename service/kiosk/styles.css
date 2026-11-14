@@ -79,3 +79,15 @@ h2 { margin: 20px 0 6px; font-size: 1.15rem; }
   background: #1a2430;
   border-color: var(--border);
 }
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--text);
+}
+
+.checkbox input {
+  width: auto;
+}

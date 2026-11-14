@@ -17,6 +17,7 @@
   const regFirst = document.getElementById("reg-first");
   const regLast = document.getElementById("reg-last");
   const regSubteam = document.getElementById("reg-subteam");
+  const regLeadership = document.getElementById("reg-leadership");
   const regPin = document.getElementById("reg-pin");
   const regConfirm = document.getElementById("reg-confirm");
   const registerStatus = document.getElementById("register-status");
@@ -183,7 +184,15 @@
       const response = await fetch("/api/kiosk/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, firstName, lastName, subteam, pin, test: testMode }),
+        body: JSON.stringify({
+          token,
+          firstName,
+          lastName,
+          subteam,
+          pin,
+          leadership: regLeadership.checked,
+          test: testMode,
+        }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -195,6 +204,7 @@
       regFirst.value = "";
       regLast.value = "";
       regSubteam.value = "";
+      regLeadership.checked = false;
       regPin.value = "";
       regConfirm.value = "";
       hideRegisterForm();

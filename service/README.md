@@ -9,7 +9,7 @@ repo and calls the internal API routes.
 
 ```
 GitHub Pages display ── GET /api/state ──► this service ──► PostgreSQL
-Discord bot          ── POST /api/link, /api/signin ──► this service
+Discord bot          ── POST /api/register, /api/signin ──► this service
 Kiosk                ── POST /api/kiosk/* ──► this service
                                                          │
                                                          └─► The Blue Alliance API
@@ -56,7 +56,7 @@ Send the key as `X-Bot-Key: <key>` or `Authorization: Bearer <key>`.
 
 | Method | Path | Body | Purpose |
 |---|---|---|---|
-| `POST` | `/api/link` | `{ "discordId": "...", "name": "...", "subteam": "..." }` | Bind a Discord ID to a member and set their subteam. |
+| `POST` | `/api/register` | `{ "discordId": "...", "firstName": "...", "lastName": "...", "subteam": "...", "leadership": false }` | Create/find a member, bind a Discord ID, and set subteam/leadership. |
 | `GET` | `/api/link/:discordId` | — | Look up the linked member. |
 | `POST` | `/api/signin` | `{ "discordId": "...", "code": "8727" }` | Validate the current code and record attendance. |
 | `GET` | `/api/mentor/roster` | — | All members with subteam/PIN/Discord status. |

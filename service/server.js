@@ -291,6 +291,7 @@ async function handleKioskRegister(req, res) {
   const subteam = String(body.subteam || "").trim();
   const pin = String(body.pin || "").trim();
   const test = Boolean(body.test);
+  const leadership = Boolean(body.leadership);
 
   if (!firstName || !lastName) {
     return sendJson(
@@ -320,12 +321,13 @@ async function handleKioskRegister(req, res) {
   try {
     const member = await repo.registerMember(firstName, lastName, subteam, pin, {
       dryrun: test,
+      leadership,
     });
     if (!test) pushSheetStatus();
     return sendJson(
       res,
       200,
-      { ok: true, name: member.name, subteam: member.subteam },
+      { ok: true, name: member.name, subteam: member.subteam, leadership: member.leadership },
       false
     );
   } catch (err) {
@@ -394,7 +396,7 @@ async function handleSignOut(req, res) {
       {
         ok: false,
         error: "not_linked",
-        message: "You're not linked yet. Run `/link <your name>` first.",
+        message: "You're not registered yet. Run `/register` first.",
       },
       false
     );
@@ -449,11 +451,12 @@ async function handleMentorAddMember(req, res) {
   const firstName = String(body.firstName || "").trim();
   const lastName = String(body.lastName || "").trim();
   const subteam = String(body.subteam || "").trim();
+  const leadership = Boolean(body.leadership);
   if (!firstName || !lastName) {
     return sendError(res, 400, "First and last name are required.", false);
   }
   try {
-    const member = await repo.addMember(firstName, lastName, subteam);
+    const member = await repo.addMember(firstName, lastName, subteam, { leadership });
     pushSheetStatus();
     return sendJson(res, 200, { ok: true, member }, false);
   } catch (err) {
@@ -689,6 +692,7 @@ async function handleLink(req, res) {
   const lastName = String(body.lastName || "").trim();
   const name = String(body.name || "").trim();
   const subteam = String(body.subteam || "").trim();
+  const leadership = Boolean(body.leadership);
   if (!discordId) return sendError(res, 400, "Missing discordId.", false);
 
   let first = firstName;
@@ -721,7 +725,7 @@ async function handleLink(req, res) {
   }
   if (!match) {
     try {
-      match = await repo.addMember(first, last, subteam);
+      match = await repo.addMember(first, last, subteam, { leadership });
       created = true;
     } catch (err) {
       if (err.code === "23505") {
@@ -741,7 +745,7 @@ async function handleLink(req, res) {
   }
 
   try {
-    await repo.linkMember(discordId, match.name, subteam);
+    await repo.linkMember(discordId, match.name, subteam, leadership);
   } catch (err) {
     if (err.code === "23505") {
       return sendJson(
@@ -768,6 +772,7 @@ async function handleLink(req, res) {
       firstName: first,
       lastName: last,
       subteam: subteam || match.subteam || "",
+      leadership,
       created,
     },
     false
@@ -786,6 +791,7 @@ async function handleGetLink(req, res, discordId) {
       name: member ? member.name : null,
       firstName: member ? member.firstName : null,
       lastName: member ? member.lastName : null,
+      leadership: member ? member.leadership : null,
     },
     false
   );
@@ -826,7 +832,7 @@ async function handleSignIn(req, res) {
       {
         ok: false,
         error: "not_linked",
-        message: "You're not linked yet. Run `/link <your roster name>` once first.",
+        message: "You're not registered yet. Run `/register` once first.",
       },
       false
     );
@@ -1090,7 +1096,7 @@ async function handler(req, res) {
     );
   }
 
-  if (req.method === "POST" && pathname === "/api/link") {
+  if (req.method === "POST" && (pathname === "/api/link" || pathname === "/api/register")) {
     return handleLink(req, res);
   }
 

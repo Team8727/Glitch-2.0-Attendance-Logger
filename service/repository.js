@@ -59,6 +59,7 @@ function mapMember(row) {
     discordId: row.discord_id || null,
     hasPin: Boolean(row.has_pin),
     isDryrun: Boolean(row.is_dryrun),
+    leadership: Boolean(row.is_leadership),
   };
 }
 
@@ -66,7 +67,7 @@ async function listMembers({ unlinkedOnly = false } = {}) {
   const where = unlinkedOnly ? "WHERE discord_id IS NULL" : "";
   const { rows } = await db.query(
     `SELECT id, first_name, last_name, subteam, discord_id,
-            (pin_hash IS NOT NULL) AS has_pin, is_dryrun
+            (pin_hash IS NOT NULL) AS has_pin, is_dryrun, is_leadership
        FROM members
        ${where}
       ORDER BY lower(first_name), lower(last_name)`
@@ -74,30 +75,37 @@ async function listMembers({ unlinkedOnly = false } = {}) {
   return rows.map(mapMember);
 }
 
-async function addMember(firstName, lastName, subteam, { dryrun = false } = {}) {
+async function addMember(firstName, lastName, subteam, { dryrun = false, leadership = false } = {}) {
   const { rows } = await db.query(
-    `INSERT INTO members (first_name, last_name, subteam, is_dryrun)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO members (first_name, last_name, subteam, is_dryrun, is_leadership)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING id, first_name, last_name, subteam, discord_id,
-               (pin_hash IS NOT NULL) AS has_pin, is_dryrun`,
+               (pin_hash IS NOT NULL) AS has_pin, is_dryrun, is_leadership`,
     [
       String(firstName || "").trim(),
       String(lastName || "").trim(),
       String(subteam || "").trim(),
       Boolean(dryrun),
+      Boolean(leadership),
     ]
   );
   return mapMember(rows[0]);
 }
 
-async function registerMember(firstName, lastName, subteam, pin, { dryrun = false } = {}) {
+async function registerMember(
+  firstName,
+  lastName,
+  subteam,
+  pin,
+  { dryrun = false, leadership = false } = {}
+) {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto.scryptSync(String(pin), salt, KEY_LENGTH).toString("hex");
   const { rows } = await db.query(
-    `INSERT INTO members (first_name, last_name, subteam, pin_salt, pin_hash, is_dryrun)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO members (first_name, last_name, subteam, pin_salt, pin_hash, is_dryrun, is_leadership)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id, first_name, last_name, subteam, discord_id,
-               (pin_hash IS NOT NULL) AS has_pin, is_dryrun`,
+               (pin_hash IS NOT NULL) AS has_pin, is_dryrun, is_leadership`,
     [
       String(firstName || "").trim(),
       String(lastName || "").trim(),
@@ -105,6 +113,7 @@ async function registerMember(firstName, lastName, subteam, pin, { dryrun = fals
       salt,
       hash,
       Boolean(dryrun),
+      Boolean(leadership),
     ]
   );
   return mapMember(rows[0]);
@@ -115,7 +124,7 @@ async function findMember(name) {
   if (!target) return null;
   const { rows } = await db.query(
     `SELECT id, first_name, last_name, subteam, discord_id,
-            (pin_hash IS NOT NULL) AS has_pin, is_dryrun
+            (pin_hash IS NOT NULL) AS has_pin, is_dryrun, is_leadership
        FROM members
       WHERE lower(first_name || ' ' || last_name) = lower($1)
       LIMIT 1`,
@@ -127,7 +136,7 @@ async function findMember(name) {
 async function getMemberByDiscordId(discordId) {
   const { rows } = await db.query(
     `SELECT id, first_name, last_name, subteam, discord_id,
-            (pin_hash IS NOT NULL) AS has_pin, is_dryrun
+            (pin_hash IS NOT NULL) AS has_pin, is_dryrun, is_leadership
        FROM members
       WHERE discord_id = $1
       LIMIT 1`,
@@ -136,16 +145,17 @@ async function getMemberByDiscordId(discordId) {
   return rows[0] ? mapMember(rows[0]) : null;
 }
 
-async function linkMember(discordId, name, subteam) {
+async function linkMember(discordId, name, subteam, leadership = false) {
   const member = await findMember(name);
   if (!member) return null;
   await db.query(
     `UPDATE members
         SET discord_id = $1,
             subteam = COALESCE(NULLIF($2, ''), subteam),
+            is_leadership = $3,
             updated_at = now()
-      WHERE id = $3`,
-    [String(discordId), String(subteam || "").trim(), member.id]
+      WHERE id = $4`,
+    [String(discordId), String(subteam || "").trim(), Boolean(leadership), member.id]
   );
   return findMember(name);
 }
@@ -377,7 +387,7 @@ async function attendanceForExport(range) {
 async function memberStatusRows() {
   const { rows } = await db.query(
     `SELECT first_name, last_name, subteam, discord_id,
-            (pin_hash IS NOT NULL) AS has_pin
+            (pin_hash IS NOT NULL) AS has_pin, is_leadership
        FROM members
       WHERE is_dryrun = false
       ORDER BY lower(first_name), lower(last_name)`
@@ -387,6 +397,7 @@ async function memberStatusRows() {
     firstName: row.first_name || "",
     lastName: row.last_name || "",
     subteam: row.subteam || "",
+    leadership: Boolean(row.is_leadership),
     hasPin: Boolean(row.has_pin),
     discordId: row.discord_id || "",
   }));

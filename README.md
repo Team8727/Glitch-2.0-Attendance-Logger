@@ -32,7 +32,7 @@ calls the internal API routes with a shared `BOT_API_KEY`.
   `styles.css`, `config.js`). `config.js` holds the one setting: the API URL.
   Empty URL = demo mode with sample data.
 - `data/roster.csv` — the roster (Name, Student ID, Subteam, Role, Email). The service
-  re-reads it on every `/link`, so edits need no restart and it is safe in-repo.
+  re-reads it on every `/register`, so edits need no restart and it is safe in-repo.
 - `.github/workflows/pages.yml` — deploys `site/` to Pages on every push.
 - `docs/SETUP.md` — full runbook: TBA key, Discord app, service hosting, Pages, poster,
   roster CSV, validation checklist, operations.
@@ -46,7 +46,7 @@ calls the internal API routes with a shared `BOT_API_KEY`.
    `data/roster.csv` → host the service → set `botApiUrl` in `site/config.js` →
    enable Pages → print the poster.
 2. Deploy the Discord bot from `glitch-2.0-discord-bot` and point it at this service.
-3. Students run `/link <roster name>` once, then `/signin <number on the display>` at
+3. Students run `/register` once, then `/signin <number on the display>` at
    every practice.
 
 ## Notes and limitations

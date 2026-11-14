@@ -26,6 +26,7 @@ const ROSTER_HEADERS = [
   'First Name',
   'Last Name',
   'Subteam',
+  'Leadership',
   'PIN Set',
   'Discord Linked',
   'Discord ID',
@@ -118,6 +119,7 @@ function getRoster() {
         lastName,
         name: `${firstName} ${lastName}`.trim(),
         subteam: String(row[2] || '').trim(),
+        leadership: String(row[3] || '').trim().toLowerCase() === 'yes',
       };
     })
     .filter((row) => row.name);
@@ -150,6 +152,7 @@ function updateRosterStatus(rows) {
       firstName,
       lastName,
       status.subteam || '',
+      status.leadership ? 'Yes' : 'No',
       status.hasPin ? 'Yes' : 'No',
       status.discordId ? 'Yes' : 'No',
       status.discordId || '',
