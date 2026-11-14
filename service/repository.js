@@ -330,56 +330,186 @@ async function memberStatusRows() {
 }
 
 async function stats() {
-  const sessions = `
+  const tzValue = tz();
+  const sessionsCte = `
     WITH sessions AS (
-      SELECT m.id, m.first_name, m.last_name, m.subteam,
+      SELECT a.id, a.member_id, a.practice_date, a.ts, a.left_at, a.source,
+             m.first_name, m.last_name, m.subteam,
              GREATEST(
                0,
                EXTRACT(EPOCH FROM (
                  LEAST(COALESCE(a.left_at, now()), a.ts + interval '2 hours') - a.ts
                )) / 3600.0
-             ) AS hours
+             ) AS hours,
+             EXTRACT(EPOCH FROM (
+               a.ts - ((a.practice_date + time '15:30') AT TIME ZONE $1)
+             )) / 60.0 AS minutes_after_start,
+             CASE
+               WHEN a.left_at IS NULL THEN NULL
+               ELSE EXTRACT(EPOCH FROM (
+                 a.left_at - ((a.practice_date + time '17:30') AT TIME ZONE $1)
+               )) / 60.0
+             END AS minutes_after_end
         FROM attendance a
         JOIN members m ON m.id = a.member_id
        WHERE a.is_test = false
     )
   `;
+  const q = (sql) => db.query(`${sessionsCte} ${sql}`, [tzValue]);
 
-  const [subteams, members, totals] = await Promise.all([
-    db.query(
-      `${sessions}
-       SELECT COALESCE(NULLIF(subteam, ''), 'Unknown') AS subteam,
+  const [
+    totals,
+    subteams,
+    members,
+    byWeekday,
+    byPractice,
+    sourceBreakdown,
+    sessionBuckets,
+    signInBuckets,
+    signOutBuckets,
+    consistency,
+    forgotSignOut,
+    punctuality,
+    longestSessions,
+    streakRows,
+  ] = await Promise.all([
+    q(`SELECT COALESCE(SUM(hours), 0)::float AS hours,
+              COUNT(*)::int AS sessions,
+              COUNT(DISTINCT practice_date)::int AS practices,
+              COUNT(DISTINCT member_id)::int AS members
+         FROM sessions`),
+    q(`SELECT COALESCE(NULLIF(subteam, ''), 'Unknown') AS subteam,
               SUM(hours)::float AS hours,
               COUNT(*)::int AS sessions,
-              COUNT(DISTINCT id)::int AS members
+              COUNT(DISTINCT member_id)::int AS members
          FROM sessions
         GROUP BY 1
-        ORDER BY hours DESC`
-    ),
-    db.query(
-      `${sessions}
-       SELECT first_name, last_name, subteam,
+        ORDER BY hours DESC`),
+    q(`SELECT first_name, last_name, subteam,
               SUM(hours)::float AS hours,
               COUNT(*)::int AS sessions
          FROM sessions
-        GROUP BY id, first_name, last_name, subteam
-        ORDER BY hours DESC, lower(first_name), lower(last_name)`
-    ),
-    db.query(
-      `SELECT COALESCE(SUM(
-                GREATEST(
-                  0,
-                  EXTRACT(EPOCH FROM (
-                    LEAST(COALESCE(left_at, now()), ts + interval '2 hours') - ts
-                  )) / 3600.0
-                )
-              ), 0)::float AS hours,
+        GROUP BY member_id, first_name, last_name, subteam
+        ORDER BY hours DESC, lower(first_name), lower(last_name)`),
+    q(`SELECT EXTRACT(ISODOW FROM practice_date)::int AS weekday_num,
+              to_char(practice_date, 'Dy') AS weekday,
               COUNT(*)::int AS sessions,
-              COUNT(DISTINCT practice_date)::int AS practices
-         FROM attendance
-        WHERE is_test = false`
-    ),
+              SUM(hours)::float AS hours
+         FROM sessions
+        GROUP BY 1, 2
+        ORDER BY 1`),
+    q(`SELECT to_char(practice_date, 'YYYY-MM-DD') AS date,
+              COUNT(*)::int AS sessions,
+              SUM(hours)::float AS hours
+         FROM sessions
+        GROUP BY 1
+        ORDER BY 1`),
+    q(`SELECT COALESCE(NULLIF(source, ''), 'unknown') AS source,
+              COUNT(*)::int AS sessions
+         FROM sessions
+        GROUP BY 1
+        ORDER BY sessions DESC`),
+    q(`SELECT CASE
+                WHEN hours < 0.5 THEN 'Under 30 min'
+                WHEN hours < 1 THEN '30–60 min'
+                WHEN hours < 1.5 THEN '1–1.5 hr'
+                WHEN hours < 2 THEN '1.5–2 hr'
+                ELSE '2+ hr'
+              END AS bucket,
+              COUNT(*)::int AS sessions
+         FROM sessions
+        GROUP BY 1
+        ORDER BY 1`),
+    q(`SELECT CASE
+                WHEN minutes_after_start < 0 THEN 'Before 3:30'
+                WHEN minutes_after_start < 15 THEN '3:30–3:45'
+                WHEN minutes_after_start < 30 THEN '3:45–4:00'
+                WHEN minutes_after_start < 60 THEN '4:00–4:30'
+                ELSE 'After 4:30'
+              END AS bucket,
+              COUNT(*)::int AS sessions
+         FROM sessions
+        GROUP BY 1
+        ORDER BY 1`),
+    q(`SELECT CASE
+                WHEN left_at IS NULL THEN 'Never signed out'
+                WHEN minutes_after_end < -30 THEN 'Before 5:00'
+                WHEN minutes_after_end < 0 THEN '5:00–5:30'
+                WHEN minutes_after_end < 30 THEN '5:30–6:00'
+                ELSE 'After 6:00'
+              END AS bucket,
+              COUNT(*)::int AS sessions
+         FROM sessions
+        GROUP BY 1
+        ORDER BY 1`),
+    q(`SELECT m.first_name, m.last_name, m.subteam,
+              COUNT(DISTINCT s.practice_date)::int AS attended
+         FROM members m
+         LEFT JOIN sessions s ON s.member_id = m.id
+        GROUP BY m.id, m.first_name, m.last_name, m.subteam
+        ORDER BY attended DESC, lower(m.first_name), lower(m.last_name)`),
+    q(`SELECT first_name, last_name, subteam, COUNT(*)::int AS count
+         FROM sessions
+        WHERE left_at IS NULL
+        GROUP BY first_name, last_name, subteam
+        ORDER BY count DESC, lower(first_name), lower(last_name)`),
+    q(`SELECT first_name, last_name, subteam, AVG(minutes_after_start)::float AS avg_minutes
+         FROM sessions
+        GROUP BY first_name, last_name, subteam
+        ORDER BY avg_minutes ASC`),
+    q(`SELECT first_name, last_name, subteam,
+              to_char(practice_date, 'YYYY-MM-DD') AS date,
+              hours
+         FROM sessions
+        ORDER BY hours DESC
+        LIMIT 10`),
+    q(`SELECT member_id, first_name, last_name, subteam,
+              to_char(practice_date, 'YYYY-MM-DD') AS date
+         FROM sessions
+        ORDER BY practice_date, member_id`),
   ]);
+
+  const practiceDates = byPractice.rows.map((row) => row.date);
+  const meetings = practiceDates.length;
+  const attendedByMember = new Map();
+  for (const row of streakRows.rows) {
+    if (!attendedByMember.has(row.member_id)) {
+      attendedByMember.set(row.member_id, {
+        name: fullName(row),
+        subteam: row.subteam || "",
+        dates: new Set(),
+      });
+    }
+    attendedByMember.get(row.member_id).dates.add(row.date);
+  }
+
+  const streaks = [];
+  for (const entry of attendedByMember.values()) {
+    let longest = 0;
+    let run = 0;
+    for (const date of practiceDates) {
+      if (entry.dates.has(date)) {
+        run += 1;
+        longest = Math.max(longest, run);
+      } else {
+        run = 0;
+      }
+    }
+    let current = 0;
+    for (let i = practiceDates.length - 1; i >= 0; i -= 1) {
+      if (entry.dates.has(practiceDates[i])) current += 1;
+      else break;
+    }
+    streaks.push({
+      name: entry.name,
+      subteam: entry.subteam,
+      longest,
+      current,
+    });
+  }
+  streaks.sort(
+    (a, b) => b.longest - a.longest || b.current - a.current || a.name.localeCompare(b.name)
+  );
 
   return {
     totals: totals.rows[0],
@@ -395,6 +525,45 @@ async function stats() {
       hours: Number(row.hours),
       sessions: row.sessions,
     })),
+    byWeekday: byWeekday.rows.map((row) => ({
+      weekday: row.weekday,
+      weekdayNum: row.weekday_num,
+      sessions: row.sessions,
+      hours: Number(row.hours),
+    })),
+    byPractice: byPractice.rows.map((row) => ({
+      date: row.date,
+      sessions: row.sessions,
+      hours: Number(row.hours),
+    })),
+    sourceBreakdown: sourceBreakdown.rows,
+    sessionBuckets: sessionBuckets.rows,
+    signInBuckets: signInBuckets.rows,
+    signOutBuckets: signOutBuckets.rows,
+    consistency: consistency.rows.map((row) => ({
+      name: fullName(row),
+      subteam: row.subteam || "",
+      attended: row.attended,
+      meetings,
+      rate: meetings ? row.attended / meetings : 0,
+    })),
+    forgotSignOut: forgotSignOut.rows.map((row) => ({
+      name: fullName(row),
+      subteam: row.subteam || "",
+      count: row.count,
+    })),
+    punctuality: punctuality.rows.map((row) => ({
+      name: fullName(row),
+      subteam: row.subteam || "",
+      avgMinutes: Number(row.avg_minutes),
+    })),
+    longestSessions: longestSessions.rows.map((row) => ({
+      name: fullName(row),
+      subteam: row.subteam || "",
+      date: row.date,
+      hours: Number(row.hours),
+    })),
+    streaks: streaks.slice(0, 10),
   };
 }
 
