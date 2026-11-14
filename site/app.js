@@ -5,7 +5,7 @@
   var apiUrl = String(cfg.botApiUrl || "").replace(/\/+$/, "");
   var demoMode = !apiUrl;
   var POLL_MS = 20000;
-  var FETCH_TIMEOUT_MS = 15000;
+  var FETCH_TIMEOUT_MS = 8000;
   var WINDOW_SECONDS = 60;
 
   var titleEl = document.getElementById("title");
@@ -74,7 +74,7 @@
     }
 
     if (state.code) {
-      deadline = Date.now() + state.code.secondsRemaining * 1000;
+      deadline = performance.now() + state.code.secondsRemaining * 1000;
       codeEl.textContent = String(state.code.teamNumber);
       codeEl.className = "pin";
       embedCodeEl.textContent = String(state.code.teamNumber);
@@ -167,13 +167,13 @@
       barEl.style.width = "0%";
       return;
     }
-    var remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    var remaining = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
     expiresEl.textContent = "EXPIRES IN " + remaining + "S";
     barEl.style.width =
       Math.max(0, Math.min(1, remaining / WINDOW_SECONDS)) * 100 + "%";
     if (remaining === 0) {
       if (demoMode) {
-        deadline = Date.now() + WINDOW_SECONDS * 1000;
+        deadline = performance.now() + WINDOW_SECONDS * 1000;
       } else if (!fetching) {
         poll();
       }
