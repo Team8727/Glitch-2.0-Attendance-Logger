@@ -624,7 +624,24 @@ async function handleLink(req, res) {
     );
   }
 
-  await repo.linkMember(discordId, match.name, subteam);
+  try {
+    await repo.linkMember(discordId, match.name, subteam);
+  } catch (err) {
+    if (err.code === "23505") {
+      return sendJson(
+        res,
+        409,
+        {
+          ok: false,
+          error: "discord_already_linked",
+          message:
+            "That Discord account is already linked to another member. Ask a mentor to unlink it first.",
+        },
+        false
+      );
+    }
+    throw err;
+  }
   pushSheetStatus();
   return sendJson(
     res,
