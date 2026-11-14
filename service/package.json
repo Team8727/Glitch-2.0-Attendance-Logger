@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node index.js",
     "check": "node --check index.js && node --check server.js && node --check codes.js && node --check attendance.js && node --check roster.js && node --check store.js && node --check tba.js && node --check db.js && node --check repository.js && node --check sheet-sync.js && node --check migrate.js && node --check env.js && node --check pins.js && node --check subteams.js",
-    "test": "node --test"
+    "test": "node --test",
+    "migrate": "node migrate.js"
   },
   "dependencies": {
     "pg": "^8.23.1"

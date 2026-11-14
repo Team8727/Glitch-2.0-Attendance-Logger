@@ -39,6 +39,17 @@ async function listMembers({ unlinkedOnly = false } = {}) {
   return rows.map(mapMember);
 }
 
+async function addMember(firstName, lastName, subteam) {
+  const { rows } = await db.query(
+    `INSERT INTO members (first_name, last_name, subteam)
+     VALUES ($1, $2, $3)
+     RETURNING id, first_name, last_name, subteam, discord_id,
+               (pin_hash IS NOT NULL) AS has_pin`,
+    [String(firstName || "").trim(), String(lastName || "").trim(), String(subteam || "").trim()]
+  );
+  return mapMember(rows[0]);
+}
+
 async function findMember(name) {
   const target = String(name || "").trim();
   if (!target) return null;
@@ -222,6 +233,7 @@ async function memberStatusRows() {
 
 module.exports = {
   listMembers,
+  addMember,
   findMember,
   getMemberByDiscordId,
   linkMember,

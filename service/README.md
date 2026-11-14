@@ -1,26 +1,32 @@
 # Glitch 2.0 Attendance Service
 
-The attendance backend. It owns the rotating team-number code, the roster, the
-JSON stores, and the HTTP API. It does **not** connect to Discord — the bot lives
-in the separate [`glitch-2.0-discord-bot`](https://github.com/Team8727/glitch-2.0-discord-bot)
+The attendance backend. **PostgreSQL is the source of truth** for members,
+Discord links, PINs, subteams, and attendance. The service also owns the rotating
+team-number code and the HTTP API. It does **not** connect to Discord — the bot
+lives in the separate
+[`glitch-2.0-discord-bot`](https://github.com/Team8727/glitch-2.0-discord-bot)
 repo and calls the internal API routes.
 
 ```
-GitHub Pages display ── GET /api/state ──► this service
+GitHub Pages display ── GET /api/state ──► this service ──► PostgreSQL
 Discord bot          ── POST /api/link, /api/signin ──► this service
+Kiosk                ── POST /api/kiosk/* ──► this service
                                                          │
                                                          └─► The Blue Alliance API
+                                                         └─► Google Sheets (one-way report)
 ```
 
 ## Run
 
 ```bash
 cd service
-cp .env.example .env      # fill in BOT_API_KEY and TBA_AUTH_KEY
+sudo ../deploy/install-postgres.sh   # one-time: installs Postgres, writes DATABASE_URL
+npm install
+npm run migrate                      # imports roster.csv + existing JSON data
 npm start
 ```
 
-Node 20+ is required. There are no npm dependencies.
+Node 20+ is required.
 
 ## systemd
 
@@ -50,44 +56,67 @@ Send the key as `X-Bot-Key: <key>` or `Authorization: Bearer <key>`.
 
 | Method | Path | Body | Purpose |
 |---|---|---|---|
-| `POST` | `/api/link` | `{ "discordId": "...", "name": "..." }` | Validate a roster name and bind it to a Discord ID. |
-| `GET` | `/api/link/:discordId` | — | Look up the linked roster name. |
+| `POST` | `/api/link` | `{ "discordId": "...", "name": "...", "subteam": "..." }` | Bind a Discord ID to a member and set their subteam. |
+| `GET` | `/api/link/:discordId` | — | Look up the linked member. |
 | `POST` | `/api/signin` | `{ "discordId": "...", "code": "8727" }` | Validate the current code and record attendance. |
+| `GET` | `/api/mentor/roster` | — | All members with subteam/PIN/Discord status. |
+| `POST` | `/api/mentor/signin` | `{ "name": "..." }` | Force sign-in without the code. |
+| `POST` | `/api/mentor/reset-pin` | `{ "name": "..." }` | Clear a member's kiosk PIN. |
+| `POST` | `/api/mentor/sync-roster` | — | Push member status to Google Sheets. |
 
-If `BOT_API_KEY` is unset, the internal routes return `503` and the public display
-continues to work.
+### Kiosk (requires `KIOSK_TOKEN`)
 
-## Data files
+| Method | Path | Body | Purpose |
+|---|---|---|---|
+| `GET` | `/api/kiosk/roster?token=...` | — | Unlinked members with PIN status. |
+| `POST` | `/api/kiosk/signin` | `{ token, name, code, pin }` | Sign in with a PIN. |
+| `POST` | `/api/kiosk/set-pin` | `{ token, name, code, pin, subteam }` | First-time PIN + subteam setup, then sign in. |
 
-All under `service/data/` (gitignored):
+## Database
+
+PostgreSQL tables:
+
+- `members` — first/last name, subteam, Discord ID, scrypt PIN hash/salt
+- `attendance` — member, timestamp, practice date, source, code
+
+The migration script imports:
+
+- `data/roster.csv` → `members`
+- `service/data/links.json` → `members.discord_id`
+- `service/data/pins.json` → `members.pin_salt/pin_hash`
+- `service/data/subteams.json` → `members.subteam`
+- `service/data/signins.json` → `attendance`
+
+Run it with `npm run migrate`. It is idempotent.
+
+## Remaining JSON files
 
 | File | Contents |
 |---|---|
-| `signins.json` | Array of `{ ts, name, code }` — the attendance record. Back this up. |
-| `links.json` | Object map of Discord ID → roster name. |
-| `code-state.json` | `{ windowStart, current, previous }` — survives restarts mid-window. |
-| `tba-cache.json` | Team info cache (name/city/state), 30-day TTL. |
-| `pins.json` | Kiosk PINs, stored as scrypt hashes with per-member salts. |
-| `subteams.json` | Member-selected subteams (set via `/link` or kiosk PIN setup). |
-
-The roster is `data/roster.csv` at the repo root (override with `ROSTER_CSV`).
+| `data/code-state.json` | `{ windowStart, current, previous }` — survives restarts mid-window. |
+| `data/tba-cache.json` | Team info cache (name/city/state), 30-day TTL. |
+| `data/sheet-sync.json` | Last attendance row pushed to Google Sheets. |
 
 ## Google Sheets
 
-The service can append new sign-ins to a Google Sheet through an Apps Script
-webhook. See `docs/GOOGLE-SHEETS.md` for the full setup.
+Google Sheets is a **one-way report**. The service pushes new attendance rows to
+`Sign-ins` and member status to `Roster`. It never reads roster data back from
+Sheets. See `docs/GOOGLE-SHEETS.md`.
 
 ## Environment
 
 | Variable | Meaning |
 |---|---|
-| `BOT_API_KEY` | Shared secret for the internal bot routes. Required for `/link` and `/signin`. |
-| `TBA_AUTH_KEY` | The Blue Alliance API key. Missing → degraded mode (cached team only). |
-| `TZ` | IANA timezone for day boundaries (e.g. `America/Chicago`). |
+| `DATABASE_URL` | PostgreSQL connection string. Written by `deploy/install-postgres.sh`. |
+| `BOT_API_KEY` | Shared secret for the internal bot routes. |
+| `KIOSK_TOKEN` | Shared token for the kiosk page/API. |
+| `TBA_AUTH_KEY` | The Blue Alliance API key. Missing → degraded mode. |
+| `TZ` | IANA timezone for day boundaries (e.g. `America/New_York`). |
 | `HOST` | Bind address (default `127.0.0.1`). |
 | `PORT` | API port (default `3000`). |
-| `LINKS_FILE` | Optional path override for `data/links.json`. |
-| `ROSTER_CSV` | Optional path override for `data/roster.csv`. |
+| `SHEETS_WEBHOOK_URL` | Google Apps Script web app URL. |
+| `SHEETS_WEBHOOK_SECRET` | Shared secret for the Sheets webhook. |
+| `SHEETS_SYNC_INTERVAL_MS` | Attendance sync interval (default 60000). |
 
 ## How the rotating code works
 
@@ -105,7 +134,8 @@ webhook. See `docs/GOOGLE-SHEETS.md` for the full setup.
 
 ```bash
 npm run check
-BOT_API_KEY=test TBA_AUTH_KEY=... npm start
+npm run migrate
+npm start
 curl http://127.0.0.1:3000/api/state
-curl -H 'X-Bot-Key: test' http://127.0.0.1:3000/api/link/123
+curl -H 'X-Bot-Key: test' http://127.0.0.1:3000/api/mentor/roster
 ```

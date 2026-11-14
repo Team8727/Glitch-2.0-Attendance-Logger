@@ -281,6 +281,37 @@ async function handleMentorRoster(req, res) {
   }
 }
 
+async function handleMentorAddMember(req, res) {
+  if (!requireBot(req, res)) return;
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (err) {
+    return sendError(res, err.status || 400, err.message, false);
+  }
+  const firstName = String(body.firstName || "").trim();
+  const lastName = String(body.lastName || "").trim();
+  const subteam = String(body.subteam || "").trim();
+  if (!firstName || !lastName) {
+    return sendError(res, 400, "First and last name are required.", false);
+  }
+  try {
+    const member = await repo.addMember(firstName, lastName, subteam);
+    pushSheetStatus();
+    return sendJson(res, 200, { ok: true, member }, false);
+  } catch (err) {
+    if (err.code === "23505") {
+      return sendJson(
+        res,
+        409,
+        { ok: false, error: "member_exists", message: "That member already exists." },
+        false
+      );
+    }
+    return sendError(res, 500, err.message, false);
+  }
+}
+
 async function handleMentorSignIn(req, res) {
   if (!requireBot(req, res)) return;
   let body;
@@ -713,6 +744,10 @@ async function handler(req, res) {
 
   if (req.method === "GET" && pathname === "/api/mentor/roster") {
     return handleMentorRoster(req, res);
+  }
+
+  if (req.method === "POST" && pathname === "/api/mentor/members") {
+    return handleMentorAddMember(req, res);
   }
 
   if (req.method === "POST" && pathname === "/api/mentor/signin") {
