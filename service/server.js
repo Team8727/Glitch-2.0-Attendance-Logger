@@ -152,6 +152,75 @@ function handleKioskRoster(req, res) {
   }
 }
 
+function handleMentorRoster(req, res) {
+  if (!requireBot(req, res)) return;
+  try {
+    const members = roster.load().map((member) => ({
+      name: member.name,
+      subteam: member.subteam || "",
+    }));
+    return sendJson(res, 200, { ok: true, members }, false);
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+}
+
+async function handleMentorSignIn(req, res) {
+  if (!requireBot(req, res)) return;
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (err) {
+    return sendError(res, err.status || 400, err.message, false);
+  }
+
+  const name = String(body.name || "").trim();
+  if (!name) return sendError(res, 400, "Select a member.", false);
+
+  let match;
+  try {
+    match = roster.find(name);
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+  if (!match) {
+    return sendJson(
+      res,
+      404,
+      { ok: false, error: "not_on_roster", message: "That name isn't on the roster." },
+      false
+    );
+  }
+
+  const result = await attendance.signIn(match.name, "mentor");
+  if (!result || result.ok !== true) {
+    if (result && result.already) {
+      return sendJson(
+        res,
+        409,
+        {
+          ok: false,
+          already: true,
+          error: "already_signed_in",
+          message: "That member is already signed in for today.",
+        },
+        false
+      );
+    }
+    return sendJson(
+      res,
+      500,
+      {
+        ok: false,
+        error: "signin_failed",
+        message: `Sign-in failed: ${(result && result.error) || "unknown error — ask a mentor."}`,
+      },
+      false
+    );
+  }
+  return sendJson(res, 200, { ok: true, name: result.name || match.name }, false);
+}
+
 async function handleKioskSignIn(req, res) {
   let body;
   try {
@@ -443,6 +512,14 @@ async function handler(req, res) {
 
   if (req.method === "POST" && pathname === "/api/kiosk/signin") {
     return handleKioskSignIn(req, res);
+  }
+
+  if (req.method === "GET" && pathname === "/api/mentor/roster") {
+    return handleMentorRoster(req, res);
+  }
+
+  if (req.method === "POST" && pathname === "/api/mentor/signin") {
+    return handleMentorSignIn(req, res);
   }
 
   if (req.method === "GET" && pathname === "/api/state") {

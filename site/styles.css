@@ -453,6 +453,64 @@ body {
   font-size: 0.72rem;
 }
 
+
+/* ---------- kiosk QR ---------- */
+
+.kiosk-qr {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2vw, 24px);
+  width: min(680px, 100%);
+  padding: clamp(12px, 2vh, 18px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(4, 249, 4, 0.05), transparent 60%), var(--bg-2);
+  text-align: left;
+}
+
+.qr-image {
+  flex: none;
+  width: clamp(110px, 16vw, 160px);
+  height: auto;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 0 24px rgba(4, 249, 4, 0.18);
+}
+
+.qr-copy {
+  min-width: 0;
+}
+
+.qr-kicker {
+  margin: 0;
+  font-size: clamp(0.58rem, 0.95vw, 0.74rem);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+
+.qr-title {
+  margin: 0.25rem 0 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.05rem, 2vw, 1.5rem);
+  color: var(--text);
+}
+
+.qr-text {
+  margin: 0.35rem 0 0;
+  font-size: clamp(0.68rem, 1.1vw, 0.86rem);
+  color: var(--muted);
+}
+
+@media (max-width: 520px) {
+  .kiosk-qr {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
 /* ---------- attendance board ---------- */
 
 .board {
