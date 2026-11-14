@@ -1,7 +1,7 @@
 {
   "name": "glitch-attendance-service",
   "version": "2.0.0",
-  "description": "Glitch 2.0 attendance service — rotating team-number code, roster, JSON stores, and the HTTP API used by the display site and Discord bot.",
+  "description": "Glitch 2.0 attendance service \u2014 Postgres-backed roster, attendance, rotating team-number code, and HTTP API.",
   "main": "index.js",
   "type": "commonjs",
   "engines": {
@@ -9,7 +9,10 @@
   },
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check server.js && node --check codes.js && node --check attendance.js && node --check roster.js && node --check store.js && node --check tba.js",
+    "check": "node --check index.js && node --check server.js && node --check codes.js && node --check attendance.js && node --check roster.js && node --check store.js && node --check tba.js && node --check db.js && node --check repository.js && node --check sheet-sync.js && node --check migrate.js && node --check env.js && node --check pins.js && node --check subteams.js",
     "test": "node --test"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
   }
 }

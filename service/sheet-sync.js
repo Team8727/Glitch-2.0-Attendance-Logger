@@ -1,26 +1,21 @@
 "use strict";
 
 /*
- * Background Google Sheets sync.
+ * One-way Google Sheets reporting sync.
  *
- * - Appends new sign-ins to the Sign-ins tab.
- * - Pulls the Roster tab into service/data/roster-sheet.json on demand.
- * - Writes PIN/Discord status back to the Roster tab.
+ * Postgres is the source of truth. This module pushes:
+ *   - new attendance rows to the Sign-ins tab
+ *   - member status to the Members/Roster tab
  *
- * The service never blocks sign-ins on Sheets. If the webhook is down, rows stay
- * in signins.json and are retried next interval. The Apps Script dedupes.
+ * It never reads roster data back from Sheets.
  */
 
 const fs = require("fs");
 const path = require("path");
 
-const attendance = require("./attendance");
-const roster = require("./roster");
-const pins = require("./pins");
-const store = require("./store");
+const repo = require("./repository");
 
 const DEFAULT_STATE_FILE = path.join(__dirname, "data", "sheet-sync.json");
-const DEFAULT_ROSTER_FILE = path.join(__dirname, "data", "roster-sheet.json");
 const DEFAULT_INTERVAL_MS = 60000;
 
 let timer = null;
@@ -34,10 +29,6 @@ let lastRosterCount = 0;
 
 function stateFile() {
   return process.env.SHEETS_SYNC_STATE_FILE || DEFAULT_STATE_FILE;
-}
-
-function rosterFile() {
-  return process.env.ROSTER_JSON || DEFAULT_ROSTER_FILE;
 }
 
 function loadState() {
@@ -63,19 +54,8 @@ function saveState(state) {
   }
 }
 
-function saveRoster(rows) {
-  try {
-    fs.mkdirSync(path.dirname(rosterFile()), { recursive: true });
-    const tmp = rosterFile() + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(rows, null, 2));
-    fs.renameSync(tmp, rosterFile());
-  } catch (err) {
-    console.error("[sheets] could not save roster cache:", err.message);
-  }
-}
-
-function pendingRows() {
-  const rows = attendance.all();
+async function pendingRows() {
+  const rows = await repo.allAttendance();
   const state = loadState();
   if (!state.lastTs) return rows;
   const index = rows.findIndex(
@@ -126,7 +106,7 @@ async function syncOnce() {
 
   running = true;
   try {
-    const rows = pendingRows();
+    const rows = await pendingRows();
     if (rows.length === 0) {
       lastSync = new Date().toISOString();
       lastError = null;
@@ -150,46 +130,22 @@ async function syncOnce() {
   }
 }
 
-async function fetchRoster() {
-  const data = await callWebhook({ action: "getRoster" });
-  if (!Array.isArray(data.roster)) {
-    throw new Error(
-      "Sheets webhook did not return a roster. Update the Apps Script deployment to the latest Code.gs."
-    );
-  }
-  const rows = data.roster;
-  saveRoster(rows);
+async function pushRosterStatus() {
+  const rows = await repo.memberStatusRows();
+  const data = await callWebhook({ action: "updateRosterStatus", rows });
   lastRosterSync = new Date().toISOString();
   lastRosterError = null;
   lastRosterCount = rows.length;
-  console.log(`[sheets] roster synced — ${rows.length} member(s)`);
-  return rows;
-}
-
-async function pushRosterStatus() {
-  const members = roster.load();
-  const links = store.all();
-  const byName = new Map(
-    Object.entries(links).map(([id, name]) => [String(name).trim().toLowerCase(), id])
-  );
-  const rows = members.map((member) => ({
-    name: member.name,
-    subteam: member.subteam || "",
-    hasPin: pins.has(member.name),
-    discordId: byName.get(member.name.toLowerCase()) || "",
-  }));
-  const data = await callWebhook({ action: "updateRosterStatus", rows });
-  return data;
+  console.log(`[sheets] member status pushed — ${rows.length} member(s)`);
+  return { ok: true, rosterCount: rows.length, updated: Number(data.updated) || 0 };
 }
 
 async function syncRoster() {
   try {
-    const rows = await fetchRoster();
-    const result = await pushRosterStatus();
-    return { ok: true, rosterCount: rows.length, updated: Number(result.updated) || 0 };
+    return await pushRosterStatus();
   } catch (err) {
     lastRosterError = err.name === "AbortError" ? "Sheets webhook timed out." : err.message;
-    console.error("[sheets] roster sync failed:", lastRosterError);
+    console.error("[sheets] member status push failed:", lastRosterError);
     return { ok: false, error: lastRosterError };
   }
 }

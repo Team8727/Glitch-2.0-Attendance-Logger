@@ -23,11 +23,7 @@ const fs = require("fs");
 const path = require("path");
 
 const codes = require("./codes");
-const attendance = require("./attendance");
-const roster = require("./roster");
-const store = require("./store");
-const pins = require("./pins");
-const subteams = require("./subteams");
+const repo = require("./repository");
 const sheetSync = require("./sheet-sync");
 const tba = require("./tba");
 
@@ -121,18 +117,8 @@ function requireKiosk(res, token) {
   return true;
 }
 
-function unlinkedMembers() {
-  const linked = new Set(
-    Object.values(store.all()).map((name) => String(name || "").trim().toLowerCase())
-  );
-  return roster
-    .load()
-    .filter((member) => !linked.has(member.name.toLowerCase()))
-    .map((member) => ({
-      name: member.name,
-      subteam: member.subteam || "",
-      hasPin: pins.has(member.name),
-    }));
+async function unlinkedMembers() {
+  return repo.listMembers({ unlinkedOnly: true });
 }
 
 function serveKiosk(req, res, pathname) {
@@ -156,11 +142,12 @@ function serveKiosk(req, res, pathname) {
   }
 }
 
-function handleKioskRoster(req, res) {
+async function handleKioskRoster(req, res) {
   const url = new URL(req.url, "http://localhost");
   if (!requireKiosk(res, url.searchParams.get("token"))) return;
   try {
-    return sendJson(res, 200, { ok: true, members: unlinkedMembers() }, false);
+    const members = await unlinkedMembers();
+    return sendJson(res, 200, { ok: true, members }, false);
   } catch (err) {
     return sendError(res, 500, err.message, false);
   }
@@ -207,7 +194,7 @@ async function handleKioskSetPin(req, res) {
 
   let members;
   try {
-    members = unlinkedMembers();
+    members = await unlinkedMembers();
   } catch (err) {
     return sendError(res, 500, err.message, false);
   }
@@ -225,7 +212,7 @@ async function handleKioskSetPin(req, res) {
       false
     );
   }
-  if (pins.has(match.name)) {
+  if (await repo.hasPin(match.name)) {
     return sendJson(
       res,
       409,
@@ -262,10 +249,10 @@ async function handleKioskSetPin(req, res) {
     );
   }
 
-  await subteams.set(match.name, subteam);
-  await pins.set(match.name, pin);
+  await repo.setSubteam(match.name, subteam);
+  await repo.setPin(match.name, pin);
   pushSheetStatus();
-  const result = await attendance.signIn(match.name, code, "kiosk");
+  const result = await repo.signIn(match.name, code, "kiosk");
   if (result && result.already) {
     return sendJson(res, 200, { ok: true, name: match.name, already: true }, false);
   }
@@ -284,14 +271,10 @@ async function handleKioskSetPin(req, res) {
   return sendJson(res, 200, { ok: true, name: result.name || match.name }, false);
 }
 
-function handleMentorRoster(req, res) {
+async function handleMentorRoster(req, res) {
   if (!requireBot(req, res)) return;
   try {
-    const members = roster.load().map((member) => ({
-      name: member.name,
-      subteam: member.subteam || "",
-      hasPin: pins.has(member.name),
-    }));
+    const members = await repo.listMembers();
     return sendJson(res, 200, { ok: true, members }, false);
   } catch (err) {
     return sendError(res, 500, err.message, false);
@@ -312,7 +295,7 @@ async function handleMentorSignIn(req, res) {
 
   let match;
   try {
-    match = roster.find(name);
+    match = await repo.findMember(name);
   } catch (err) {
     return sendError(res, 500, err.message, false);
   }
@@ -325,7 +308,7 @@ async function handleMentorSignIn(req, res) {
     );
   }
 
-  const result = await attendance.signIn(match.name, "mentor", "mentor");
+  const result = await repo.signIn(match.name, "mentor", "mentor");
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -377,7 +360,7 @@ async function handleKioskSignIn(req, res) {
 
   let members;
   try {
-    members = unlinkedMembers();
+    members = await unlinkedMembers();
   } catch (err) {
     return sendError(res, 500, err.message, false);
   }
@@ -421,7 +404,7 @@ async function handleKioskSignIn(req, res) {
     );
   }
 
-  if (!pins.has(match.name)) {
+  if (!(await repo.hasPin(match.name))) {
     return sendJson(
       res,
       400,
@@ -442,7 +425,7 @@ async function handleKioskSignIn(req, res) {
       false
     );
   }
-  if (!pins.verify(match.name, pin)) {
+  if (!(await repo.verifyPin(match.name, pin))) {
     return sendJson(
       res,
       401,
@@ -451,7 +434,7 @@ async function handleKioskSignIn(req, res) {
     );
   }
 
-  const result = await attendance.signIn(match.name, code, "kiosk");
+  const result = await repo.signIn(match.name, code, "kiosk");
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -475,7 +458,7 @@ async function handleKioskSignIn(req, res) {
   return sendJson(res, 200, { ok: true, name: result.name || match.name }, false);
 }
 
-function buildState() {
+async function buildState() {
   const active = codes.current();
   let code = null;
   let team = null;
@@ -498,8 +481,8 @@ function buildState() {
     ok: true,
     code,
     team,
-    today: attendance.todayList(),
-    season: attendance.seasonStats(),
+    today: await repo.todayList(),
+    season: await repo.seasonStats(),
   };
 }
 
@@ -520,7 +503,7 @@ async function handleLink(req, res) {
 
   let match;
   try {
-    match = roster.find(name);
+    match = await repo.findMember(name);
   } catch (err) {
     return sendError(res, 500, err.message, false);
   }
@@ -537,8 +520,7 @@ async function handleLink(req, res) {
     );
   }
 
-  await store.set(discordId, match.name);
-  if (subteam) await subteams.set(match.name, subteam);
+  await repo.linkMember(discordId, match.name, subteam);
   pushSheetStatus();
   return sendJson(
     res,
@@ -548,10 +530,15 @@ async function handleLink(req, res) {
   );
 }
 
-function handleGetLink(req, res, discordId) {
+async function handleGetLink(req, res, discordId) {
   if (!requireBot(req, res)) return;
-  const name = store.get(discordId);
-  return sendJson(res, 200, { ok: true, linked: Boolean(name), name: name || null }, false);
+  const member = await repo.getMemberByDiscordId(discordId);
+  return sendJson(
+    res,
+    200,
+    { ok: true, linked: Boolean(member), name: member ? member.name : null },
+    false
+  );
 }
 
 async function handleSignIn(req, res) {
@@ -580,7 +567,8 @@ async function handleSignIn(req, res) {
     );
   }
 
-  const linkedName = store.get(discordId);
+  const member = await repo.getMemberByDiscordId(discordId);
+  const linkedName = member ? member.name : null;
   if (!linkedName) {
     return sendJson(
       res,
@@ -622,7 +610,7 @@ async function handleSignIn(req, res) {
     );
   }
 
-  const result = await attendance.signIn(linkedName, code, "discord");
+  const result = await repo.signIn(linkedName, code, "discord");
   if (!result || result.ok !== true) {
     if (result && result.already) {
       return sendJson(
@@ -674,7 +662,7 @@ async function handleMentorResetPin(req, res) {
 
   let match;
   try {
-    match = roster.find(name);
+    match = await repo.findMember(name);
   } catch (err) {
     return sendError(res, 500, err.message, false);
   }
@@ -686,7 +674,7 @@ async function handleMentorResetPin(req, res) {
       false
     );
   }
-  await pins.remove(match.name);
+  await repo.resetPin(match.name);
   pushSheetStatus();
   return sendJson(res, 200, { ok: true, name: match.name }, false);
 }
@@ -740,7 +728,7 @@ async function handler(req, res) {
   }
 
   if (req.method === "GET" && pathname === "/api/state") {
-    return sendJson(res, 200, buildState(), true);
+    return sendJson(res, 200, await buildState(), true);
   }
 
   if (req.method === "GET" && pathname === "/api/health") {
