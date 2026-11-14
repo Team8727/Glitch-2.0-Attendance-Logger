@@ -39,9 +39,8 @@ fi
 # shellcheck disable=SC1090
 . "$CRED_FILE"
 
-# A failed first migration leaves a half-created SQLite DB. Reset it only when
-# the service is not running, so a working pgAdmin install is never wiped.
-if [ -f /var/lib/pgadmin/pgadmin4.db ] && ! systemctl is-active --quiet pgadmin4.service; then
+# Only reset a broken first install when explicitly requested.
+if [ "${RESET_PGADMIN:-0}" = "1" ] && [ -f /var/lib/pgadmin/pgadmin4.db ]; then
   rm -f /var/lib/pgadmin/pgadmin4.db
 fi
 
@@ -68,9 +67,14 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now pgadmin4.service
+# Run once to complete the migration, then leave it stopped and disabled at
+# boot. The dashboard starts it on demand and stops it after inactivity.
+systemctl start pgadmin4.service
+systemctl disable pgadmin4.service >/dev/null 2>&1 || true
+systemctl stop pgadmin4.service
 
-echo "[pgadmin] running on http://127.0.0.1:5050"
+echo "[pgadmin] installed; stopped and disabled at boot"
+echo "[pgadmin] the dashboard button starts it on demand"
 echo "[pgadmin] login email: $PGADMIN_EMAIL"
 echo "[pgadmin] login password: $PGADMIN_PASSWORD"
 echo "[pgadmin] credentials saved in $CRED_FILE"
