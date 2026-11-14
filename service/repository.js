@@ -346,6 +346,36 @@ async function allAttendance() {
   }));
 }
 
+async function allArchiveMessages({ maxMessages = 100000 } = {}) {
+  const limit = Math.min(Math.max(Number(maxMessages) || 100000, 1), 200000);
+  const { rows } = await db.query(
+    `SELECT channel_name, author_name, created_at, content, attachments
+       FROM discord_messages
+      WHERE author_bot = false
+      ORDER BY created_at ASC
+      LIMIT $1`,
+    [limit]
+  );
+  const totalResult = await db.query(
+    `SELECT count(*)::int AS count FROM discord_messages WHERE author_bot = false`
+  );
+  const total = totalResult.rows[0].count;
+  return {
+    messages: rows.map((row) => ({
+      channel: row.channel_name,
+      author: row.author_name || "unknown",
+      timestamp: row.created_at ? new Date(row.created_at).getTime() : 0,
+      content: row.content || "",
+      attachments: Array.isArray(row.attachments)
+        ? row.attachments.map((a) => a.filename || a.name || "")
+        : [],
+    })),
+    total,
+    returned: rows.length,
+    truncated: rows.length < total,
+  };
+}
+
 async function searchArchive({
   q = "",
   keywords = [],
@@ -852,6 +882,7 @@ module.exports = {
   memberStatusRows,
   attendanceForExport,
   searchArchive,
+  allArchiveMessages,
   createDryrun,
   clearDryrun,
   stats,

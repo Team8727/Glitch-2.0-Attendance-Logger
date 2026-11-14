@@ -371,6 +371,18 @@ async function handleMentorRoster(req, res) {
   }
 }
 
+async function handleArchiveAll(req, res) {
+  if (!requireBot(req, res)) return;
+  const url = new URL(req.url, "http://localhost");
+  const maxMessages = Number(url.searchParams.get("maxMessages") || "100000");
+  try {
+    const data = await repo.allArchiveMessages({ maxMessages });
+    return sendJson(res, 200, { ok: true, ...data }, false);
+  } catch (err) {
+    return sendError(res, 500, err.message, false);
+  }
+}
+
 async function handleArchiveSearch(req, res) {
   if (!requireBot(req, res)) return;
   const url = new URL(req.url, "http://localhost");
@@ -1139,6 +1151,10 @@ async function handler(req, res) {
 
   if (req.method === "GET" && pathname === "/api/archive/search") {
     return handleArchiveSearch(req, res);
+  }
+
+  if (req.method === "GET" && pathname === "/api/archive/all") {
+    return handleArchiveAll(req, res);
   }
 
   if (req.method === "GET" && pathname === "/api/export") {
