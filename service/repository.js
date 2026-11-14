@@ -346,6 +346,48 @@ async function allAttendance() {
   }));
 }
 
+async function searchArchive(query, limit = 80) {
+  const text = String(query || "").trim();
+  if (!text) return [];
+  const terms = [
+    ...new Set(
+      text
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, " ")
+        .split(/\s+/)
+        .filter((word) => word.length > 2)
+    ),
+  ].slice(0, 8);
+  const patterns = terms.map((term) => `%${term}%`);
+
+  try {
+    const { rows } = await db.query(
+      `SELECT channel_name, author_name, created_at, content, attachments
+         FROM discord_messages
+        WHERE author_bot = false
+          AND (
+            content ILIKE ANY($2::text[])
+            OR to_tsvector('english', coalesce(content, '')) @@ websearch_to_tsquery('english', $1)
+          )
+        ORDER BY created_at DESC
+        LIMIT $3`,
+      [text, patterns, Math.min(Math.max(Number(limit) || 80, 1), 200)]
+    );
+    return rows.map((row) => ({
+      channel: row.channel_name,
+      author: row.author_name || "unknown",
+      timestamp: row.created_at ? new Date(row.created_at).getTime() : 0,
+      content: row.content || "",
+      attachments: Array.isArray(row.attachments)
+        ? row.attachments.map((a) => a.filename || a.name || "")
+        : [],
+    }));
+  } catch (err) {
+    if (err.code === "42P01") return [];
+    throw err;
+  }
+}
+
 async function attendanceForExport(range) {
   let where = "a.is_test = false";
   if (range === "last-meeting") {
@@ -754,6 +796,7 @@ module.exports = {
   allAttendance,
   memberStatusRows,
   attendanceForExport,
+  searchArchive,
   createDryrun,
   clearDryrun,
   stats,
